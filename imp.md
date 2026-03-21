@@ -70,3 +70,59 @@ Next immediate implementation block:
 
 
  confirmed the core issue: both FireMask and PrevFireMask in your TFRecords are categorical codes (3,5,8,9), not binary. I’m patching the converter to binarize these correctly (>=7 => fire) and adding a defensive AUC fix so training won’t crash again.
+
+
+
+ Done. `interim` has been recreated cleanly.
+
+Current `interim` now contains only:
+- `geospatial_3310/fire_perimeters_3310.gpkg`
+- `geospatial_3310/roads_3310.gpkg`
+- `geospatial_3310/tracts_3310.gpkg`
+- `geospatial_3310/geospatial_preprocess_summary.json`
+- `sample_tract_join.csv`
+- `sample_tract_join_summary.json`
+
+Run this full canonical sequence from now on:
+
+```bash
+cd "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction"
+```
+
+1. Rebuild interim (clean)
+```bash
+rm -rf NextDayWildFireSpr/data/interim && mkdir -p NextDayWildFireSpr/data/interim
+
+.venv/bin/python NextDayWildFireSpr/tools/preprocess_geospatial_layers.py \
+  --ext_root Ext_Datasets \
+  --output_dir NextDayWildFireSpr/data/interim/geospatial_3310
+
+.venv/bin/python NextDayWildFireSpr/tools/build_sample_tract_join.py \
+  --manifest NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv \
+  --tracts NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg \
+  --output_csv NextDayWildFireSpr/data/interim/sample_tract_join.csv \
+  --summary_json NextDayWildFireSpr/data/interim/sample_tract_join_summary.json
+```
+
+2. Rebuild canonical hazard training dataset
+```bash
+.venv/bin/python NextDayWildFireSpr/tools/build_hazard_pickles.py \
+  --tfrecord_dir NextDayWildFireSpr/data/ndws64_meta_ca \
+  --manifest_csv NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv \
+  --output_dir NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard \
+  --metadata_json NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/channels_metadata.json \
+  --sample_index_csv NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/sample_index.csv \
+  --tile_size 64
+```
+
+3. Train (all channels by default, no selected-features flag)
+```bash
+cd NextDayWildFireSpr
+
+python trainModel-II.py --epochs 10 2>&1 | tee train_hazard_10ep.log
+```
+
+4. Share summary
+```bash
+grep -E "Using all channels|num_input_channels|Validation -|F1 Score|Best epoch|Best F1 score|Traceback|RuntimeError" train_hazard_10ep.log
+```

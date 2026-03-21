@@ -1,180 +1,92 @@
-# Progress Log
+# Progress Log (Canonical Approach)
 
-## 2026-03-22
+## Date
+2026-03-22
 
-### Session Start
-- Objective confirmed: start implementation from plan and maintain a running log.
-- Current focus block:
-  1. Build California-only subset from mapped TFRecords.
-  2. Build sample manifest for reproducible joins.
-  3. Validate generated artifacts.
+## Objective
+Build a **hazard-first wildfire pipeline**:
+1. Train model only on wildfire/environmental + location/time inputs from mapped NDWS data.
+2. Keep exposure/vulnerability for post-model risk fusion (not hazard training input).
 
-### Completed
-- Reviewed implementation notes (`plan.md`, `imp.md`) and confirmed immediate execution block.
-- Implemented CA subset builder script:
-  - `NextDayWildFireSpr/tools/build_ca_subset.py`
-  - Purpose: filter mapped TFRecords to California bounds while preserving split/file structure.
-  - Output summary file: `NextDayWildFireSpr/data/ndws64_meta_ca/ca_subset_summary.json`
-- Implemented sample manifest builder script:
-  - `NextDayWildFireSpr/tools/build_sample_manifest.py`
-  - Purpose: generate reproducible sample table for all joins.
-  - Output files:
-    - `NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv`
-    - `NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest_summary.json`
+## Canonical Implemented Pipeline
 
-### Executed Commands
-- `.venv/bin/python NextDayWildFireSpr/tools/build_ca_subset.py --input_dir NextDayWildFireSpr/data/ndws64_meta_full --output_dir NextDayWildFireSpr/data/ndws64_meta_ca --strict_metadata --overwrite`
-- `.venv/bin/python NextDayWildFireSpr/tools/build_sample_manifest.py --input_dir NextDayWildFireSpr/data/ndws64_meta_ca --output_csv NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv --summary_json NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest_summary.json --fail_on_missing_metadata`
+### 1) CA Mapped Dataset Preparation
+- Built CA-only mapped TFRecord subset:
+  - `NextDayWildFireSpr/data/ndws64_meta_ca`
+- Generated sample manifest:
+  - `NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv`
+  - `NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest_summary.json`
+- Validated schema and metadata mapping (`sample_lon`, `sample_lat`, `sample_date`, `split`, `start_day`).
 
-### Validation Results
-- CA subset totals:
-  - `records_total=13874`
-  - `records_kept=2783`
-  - `records_dropped_outside_ca=11091`
-  - `records_missing_coords=0`
-  - `split_mismatches=0`
-  - `ca_keep_ratio=0.200591`
-- Manifest totals:
-  - `rows=2783`
-  - `split_counts(train=2334, eval=158, test=291, unknown=0)`
-  - `missing_required_metadata=0`
-  - `split_mismatches=0`
-- Extra strict check:
-  - All manifest points within CA bounds (`out_of_bounds=0`).
-  - `wc -l sample_manifest.csv = 2784` (header + 2783 rows).
+### 2) Geospatial Standardization (for risk stage)
+- Standardized layers to `EPSG:3310`:
+  - `NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg`
+  - `NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg`
+  - `NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg`
 
-### Current Dataset Status
-- Source mapped dataset: `NextDayWildFireSpr/data/ndws64_meta_full` (US-wide with metadata).
-- Active modeling dataset for HEV joins: `NextDayWildFireSpr/data/ndws64_meta_ca` (California-only).
-- Reproducibility key established: `sample_manifest.csv` (`sample_id`, split, date, lon, lat, source file, record index).
+### 3) Canonical Hazard Training Dataset (Current)
+- Built with script:
+  - `NextDayWildFireSpr/tools/build_hazard_pickles.py`
+- Output dataset:
+  - `NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard`
+  - Files: `train/validation/test .data + .labels`
+  - Metadata: `channels_metadata.json`
+  - Index map: `sample_index.csv`
+- Input channels (`15` total):
+  - Original NDWS bands (`12`): `elevation, th, vs, tmmn, tmmx, sph, pr, pdsi, NDVI, population, erc, PrevFireMask`
+  - Metadata channels (`3`): `meta_lon_z, meta_lat_z, meta_day_of_year_z`
+- Labels:
+  - `FireMask` binarized to `0/1`
+- Shapes:
+  - `train: (2334, 15, 64, 64)`
+  - `validation: (158, 15, 64, 64)`
+  - `test: (291, 15, 64, 64)`
 
-### Next Implementation Blocks
-1. Reproject and clean vector layers to canonical CRS (`EPSG:3310`) into `data/interim`.
-2. Build tract attachment pipeline (point-in-polygon: sample -> tract GEOID) using manifest lon/lat.
-3. Build Exposure features per sample (ACS + road proximity/density + optional infrastructure proxies).
-4. Build Vulnerability features per sample (SVI + ACS normalization/themes).
-5. Build Hazard-history enrichments with time-safe windows (`<= sample_date` only).
-6. Generate model-ready tensors/channels + normalization metadata.
-7. Refactor training pipeline to config-driven input channels and run baseline vs HEV experiments.
-8. Produce hazard/exposure/vulnerability/composite risk maps for California.
-9. Final stage: build a minimal frontend to visualize maps, tract ranking, and per-layer toggles.
+### 4) Training Code Alignment
+- Updated `NextDayWildFireSpr/trainModel-II.py`:
+  - Default dataset path now points to canonical hazard dataset.
+  - Uses **all channels** by default (no feature subset workflow required).
+  - Auto device fallback (CUDA if available, else CPU).
+- Updated `NextDayWildFireSpr/metrics.py`:
+  - Safe binary handling for AUC path.
 
-### Completed (Execution Block 2)
-- Implemented geospatial preprocessing script:
-  - `NextDayWildFireSpr/tools/preprocess_geospatial_layers.py`
-  - Reprojects and cleans tracts/roads/fire perimeters to canonical `EPSG:3310`.
-  - Outputs:
-    - `NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg`
-    - `NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg`
-    - `NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg`
-    - `NextDayWildFireSpr/data/interim/geospatial_3310/geospatial_preprocess_summary.json`
-- Implemented sample-to-tract join script:
-  - `NextDayWildFireSpr/tools/build_sample_tract_join.py`
-  - Includes nearest-tract fallback for points not intersecting tract polygons.
-  - Outputs:
-    - `NextDayWildFireSpr/data/interim/sample_tract_join.csv`
-    - `NextDayWildFireSpr/data/interim/sample_tract_join_summary.json`
-- Implemented HEV feature table script:
-  - `NextDayWildFireSpr/tools/build_hev_features.py`
-  - Builds per-sample Exposure + Vulnerability + time-safe Hazard-history features.
-  - Outputs:
-    - `NextDayWildFireSpr/data/interim/sample_features_hev.csv`
-    - `NextDayWildFireSpr/data/interim/sample_features_hev_summary.json`
+### 5) Readiness and Sanity
+- Patched `NextDayWildFireSpr/tools/sanity_check_readiness.py` for `Ext_Datasets` layout.
+- Current sanity result: `PASS=10, WARN=1, FAIL=0`
+  - Warning is expected legacy archive schema warning.
 
-### Executed Commands (Block 2)
-- `.venv/bin/python NextDayWildFireSpr/tools/preprocess_geospatial_layers.py --ext_root Ext_Datasets --output_dir NextDayWildFireSpr/data/interim/geospatial_3310`
-- `.venv/bin/python NextDayWildFireSpr/tools/build_sample_tract_join.py --manifest NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv --tracts NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg --output_csv NextDayWildFireSpr/data/interim/sample_tract_join.csv --summary_json NextDayWildFireSpr/data/interim/sample_tract_join_summary.json`
-- `.venv/bin/python NextDayWildFireSpr/tools/build_hev_features.py --sample_tract_csv NextDayWildFireSpr/data/interim/sample_tract_join.csv --roads NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg --fire NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg --acs_json Ext_Datasets/acs_2020_exposure.json --svi_csv Ext_Datasets/SVI_2020_CaliforniaTract.csv --output_csv NextDayWildFireSpr/data/interim/sample_features_hev.csv --summary_json NextDayWildFireSpr/data/interim/sample_features_hev_summary.json --fire_lookback_years 5 --fire_buffer_m 10000`
+## Documentation Added
+- `pipeline.md` (model I/O, architecture, pipeline flow).
+- `dataset.md` (exact dataset inventory including `Ext_Datasets`).
 
-### Validation Results (Block 2)
-- Geospatial standardized layers:
-  - `tracts=9129`, `roads=779834`, `fire_perimeters=22810`, all in `EPSG:3310`.
-- Sample-to-tract mapping:
-  - `rows_total=2783`, `rows_matched=2783`, `rows_unmatched=0`, `match_rate=1.0`.
-  - `tract_match_method`: `intersects=2630`, `nearest=153`.
-- HEV feature table:
-  - `rows=2783`, `cols=34`, `sample_id duplicates=0`.
-  - Missing rates:
-    - `geoid_missing=0`
-    - `acs_population_missing=0`
-    - `svi_rpl_themes_missing=1 row`
-    - `road_nearest_dist_m_missing=0`
-  - Fire-history feature range:
-    - `past_fire_count_5y_10km`: min `0`, max `23`.
+## Current Status
+- Canonical hazard-model training data and code are ready.
+- Next active step: run full training on `next-day-wildfire-spread-ca-hazard`, then generate hazard outputs for risk fusion.
+- `data/interim` has been recreated clean from scratch (only canonical files retained):
+  - `geospatial_3310/*`
+  - `sample_tract_join.csv`
+  - `sample_tract_join_summary.json`
 
-### Updated Next Blocks
-1. Build model-ready channel tensor generation from `sample_features_hev.csv` + NDWS base channels.
-2. Refactor training loader/model config for dynamic channel counts and run first enhanced smoke training.
-3. Create risk fusion pipeline outputs: hazard map, exposure index, vulnerability index, composite risk index.
-4. Build minimal frontend at final stage to visualize California maps and rankings.
+## Latest Training Run (Canonical Hazard, 5 Epochs)
+- Command run:
+  - `python trainModel-II.py --epochs 5`
+- Dataset used:
+  - `data/next-day-wildfire-spread-ca-hazard`
+- Channel config:
+  - `15` channels (12 NDWS + 3 metadata channels), all used.
+- Validation trajectory:
+  - Epoch 1: `F1=0.4983`, `AUC=0.9261`, `IoU=0.4967`
+  - Epoch 2: `F1=0.6294`, `AUC=0.9405`, `IoU=0.5676`
+  - Epoch 3: `F1=0.6518`, `AUC=0.9435`, `IoU=0.5885`  <-- best F1
+  - Epoch 4: `F1=0.6208`, `AUC=0.9453`, `IoU=0.5618`
+  - Epoch 5: `F1=0.6275`, `AUC=0.9489`, `IoU=0.5716`
+- Best checkpoint:
+  - `Best epoch: 2` (0-based index, i.e. epoch 3)
+  - `Best F1 score: 0.6518347859382629`
 
-### Completed (Execution Block 3)
-- Implemented enhanced tensor builder:
-  - `NextDayWildFireSpr/tools/build_enhanced_pickles.py`
-  - Combines NDWS tile channels + normalized HEV scalar channels (broadcast to 64x64) into model-ready pickles.
-  - Output dataset folder:
-    - `NextDayWildFireSpr/data/next-day-wildfire-spread-hev`
-    - Files: `train/validation/test .data + .labels`
-    - Metadata: `channels_metadata.json`
-- Refactored training script for dynamic channel support:
-  - Updated `NextDayWildFireSpr/trainModel-II.py`
-  - Added args:
-    - `--dataset_path`
-    - `--channels_metadata`
-    - `--selected_features` (comma-separated)
-  - Model input channels now inferred from selected feature list (not hardcoded to 12).
-
-### Executed Commands (Block 3)
-- `.venv/bin/python NextDayWildFireSpr/tools/build_enhanced_pickles.py --tfrecord_dir NextDayWildFireSpr/data/ndws64_meta_ca --hev_csv NextDayWildFireSpr/data/interim/sample_features_hev.csv --output_dir NextDayWildFireSpr/data/next-day-wildfire-spread-hev --metadata_json NextDayWildFireSpr/data/next-day-wildfire-spread-hev/channels_metadata.json --tile_size 64`
-- `.venv/bin/python -m py_compile NextDayWildFireSpr/trainModel-II.py`
-- Loader smoke test executed by importing `trainModel-II.py` and calling `create_data_loaders(...)` with enhanced dataset path + metadata.
-
-### Validation Results (Block 3)
-- Enhanced pickled dataset shapes:
-  - `train.data=(2334, 21, 64, 64)`, `train.labels=(2334, 64, 64)`
-  - `validation.data=(158, 21, 64, 64)`, `validation.labels=(158, 64, 64)`
-  - `test.data=(291, 21, 64, 64)`, `test.labels=(291, 64, 64)`
-- Integrity checks from builder:
-  - `missing_in_hev=0`
-  - `parse_errors=0`
-- Data loader smoke test:
-  - `num_input_channels=21`
-  - first train batch shape: `X=(64, 21, 64, 64)`, `y=(64, 1, 64, 64)`
-
-### Tooling Fixes (During Block 3)
-- Patched `NextDayWildFireSpr/tools/sanity_check_readiness.py` to resolve external dataset paths from `Ext_Datasets/` (with backward-compatible fallback to repo root layout).
-- Re-ran readiness check after patch:
-  - `PASS=10`, `WARN=1`, `FAIL=0`
-  - Remaining warning is expected for legacy archive schema check (archive TFRecords are base NDWS format without metadata fields).
-
-### Remaining Blocks (Current)
-1. Run enhanced smoke training (1-2 epochs) and baseline comparison on aligned split.
-2. Build risk fusion outputs (`hazard`, `exposure`, `vulnerability`, `composite`) and tract-level rankings.
-3. Export map artifacts for California and wire a minimal frontend for visualization.
-
-### Completed (Training Debug Block)
-- Root-cause analysis on failed HEV training run:
-  - Observed exploding negative loss and validation AUC crash.
-  - Verified exported `FireMask` and `PrevFireMask` values were categorical MODIS codes (`3,5,8,9`) instead of binary.
-- Fixes implemented:
-  - Updated `NextDayWildFireSpr/tools/build_enhanced_pickles.py`:
-    - Added fire-mask conversion logic:
-      - if mask range is NDWS-like `[-1, 1]`, use `(mask > 0)`.
-      - else (MODIS classes), use `(mask >= 7)` as fire.
-    - Applied conversion to both `FireMask` labels and `PrevFireMask` input channel.
-  - Updated `NextDayWildFireSpr/metrics.py`:
-    - Hardened `auc_score` by forcing binary labels and returning `nan` safely on invalid AUC cases.
-  - Updated `NextDayWildFireSpr/trainModel-II.py`:
-    - AUC averaging now ignores `nan` values.
-    - Added device fallback (`cuda` if available, else `cpu`) for portability.
-- Rebuilt enhanced pickles after fixes:
-  - `train=(2334, 21, 64, 64)`, `validation=(158, 21, 64, 64)`, `test=(291, 21, 64, 64)`
-  - Integrity: `missing_in_hev=0`, `parse_errors=0`
-  - Confirmed `labels` and `PrevFireMask` now binary (`0/1`) across splits.
-- Post-fix smoke training (`1 epoch`) result:
-  - Loss remained stable positive (no negative explosion).
-  - Validation completed without crash:
-    - `Validation Loss=2.7871`
-    - `IoU=0.4967`, `Accuracy=0.9933`
-    - `F1=0.4983`, `AUC=0.9474`, `Dice=0.4983`
-  - Model save path triggered successfully.
+## Next Steps
+1. Train hazard model (10 epochs baseline run).
+2. Freeze best hazard model and generate hazard probabilities per sample/tile.
+3. Build exposure and vulnerability indices from external layers.
+4. Fuse `Hazard + Exposure + Vulnerability` into final California risk map.
+5. Build minimal frontend for map visualization/reporting.

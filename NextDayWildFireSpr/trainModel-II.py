@@ -26,8 +26,9 @@ VAL = 'validation'
 MASTER_RANK = 0
 SAVE_INTERVAL = 1
 
-# Make sure to change these paths!
-DATASET_PATH = 'data/next-day-wildfire-spread'
+# Canonical hazard-model dataset (original NDWS bands + location/time metadata).
+DATASET_PATH = 'data/next-day-wildfire-spread-ca-hazard'
+CHANNELS_METADATA_PATH = 'data/next-day-wildfire-spread-ca-hazard/channels_metadata.json'
 SAVE_MODEL_PATH = 'savedModels'
 
 def main():
@@ -47,72 +48,52 @@ def main():
                         help='number of total epochs to run')
     parser.add_argument('--dataset_path', default=DATASET_PATH,
                         help='Path to pickled dataset directory')
-    parser.add_argument('--channels_metadata', default=None,
-                        help='Optional JSON file with channel_names list')
-    parser.add_argument('--selected_features', default=None,
-                        help='Comma-separated feature names to keep (optional)')
+    parser.add_argument('--channels_metadata', default=CHANNELS_METADATA_PATH,
+                        help='JSON file containing channel_names list')
     args = parser.parse_args()
     print(f'initializing training on single GPU')
     train(0, args)
 
-def _load_channel_names(channels_metadata):
-    default_features = [
-        'elevation', 'pdsi', 'pr', 'sph', 'th', 'tmmn', 'tmmx', 'vs',
-        'erc', 'population', 'NDVI', 'PrevFireMask'
-    ]
+def _load_channel_names(channels_metadata, num_input_channels):
+    fallback = [f"feature_{i}" for i in range(num_input_channels)]
+
     if channels_metadata is None:
-        return default_features
+        return fallback
 
     if not os.path.exists(channels_metadata):
-        print(f"channels_metadata not found: {channels_metadata}; falling back to defaults.")
-        return default_features
+        print(f"channels_metadata not found: {channels_metadata}; using generic channel names.")
+        return fallback
 
     try:
         with open(channels_metadata, "r", encoding="utf-8") as f:
             payload = json.load(f)
         channel_names = payload.get("channel_names", [])
-        if isinstance(channel_names, list) and len(channel_names) > 0:
+        if isinstance(channel_names, list) and len(channel_names) == num_input_channels:
             return channel_names
+        print(
+            "channels_metadata has mismatched channel_names length; "
+            "using generic channel names."
+        )
     except Exception as exc:
         print(f"failed to read channels_metadata ({channels_metadata}): {exc}")
 
-    print("invalid channels_metadata format; falling back to defaults.")
-    return default_features
+    return fallback
 
 
-def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None, selected_features=None):
+def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None):
     batch_size = 64
-
-    all_features = _load_channel_names(channels_metadata)
-
-    if selected_features:
-        selected_features = [x.strip() for x in selected_features if x.strip()]
-
-    if selected_features is not None:
-        missing = [feature for feature in selected_features if feature not in all_features]
-        if missing:
-            raise ValueError(f"selected features not found in channel list: {missing}")
-        feature_indices = [all_features.index(feature) for feature in selected_features]
-        print(f"Using selected features: {selected_features}")
-        print(f"Feature indices being used: {feature_indices}")
-    else:
-        feature_indices = list(range(len(all_features)))
-        selected_features = all_features
-        print("Using all features by default.")
-
-    print(f"\nSelected features and their indices:\n{list(zip(selected_features, feature_indices))}")
 
     datasets = {
         TRAIN: RotatedWildfireDataset(
             f"{dataset_path}/{TRAIN}.data",
             f"{dataset_path}/{TRAIN}.labels",
-            features=feature_indices,
+            features=None,
             crop_size=64
         ),
         VAL: WildfireDataset(
             f"{dataset_path}/{VAL}.data",
             f"{dataset_path}/{VAL}.labels",
-            features=feature_indices,
+            features=None,
             crop_size=64
         )
     }
@@ -134,7 +115,10 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
         )
     }
 
-    num_input_channels = len(feature_indices)
+    num_input_channels = datasets[TRAIN].data.shape[1]
+    channel_names = _load_channel_names(channels_metadata, num_input_channels)
+    print(f"\nUsing all channels ({num_input_channels}):")
+    print(list(zip(channel_names, range(num_input_channels))))
     print(f"dataset_path={dataset_path}")
     print(f"num_input_channels={num_input_channels}")
 
@@ -202,17 +186,12 @@ def train(gpu, args):
     validate = True
     print("Current GPU", gpu, "\n RANK: ", rank)
 
-    selected_features = None
-    if args.selected_features:
-        selected_features = args.selected_features.split(",")
-
     dataLoaders, num_input_channels = create_data_loaders(
         rank,
         gpu,
         args.gpus * args.nodes,
         dataset_path=args.dataset_path,
         channels_metadata=args.channels_metadata,
-        selected_features=selected_features,
     )
 
     torch.manual_seed(0)
