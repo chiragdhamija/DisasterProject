@@ -14,6 +14,18 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_DIR = REPO_ROOT / "NextDayWildFireSpr"
+EXT_DATASETS_DIR = REPO_ROOT / "Ext_Datasets"
+
+
+def _resolve_external_path(*parts: str) -> Path:
+    """Resolves external dataset paths with Ext_Datasets-first fallback."""
+    ext_path = EXT_DATASETS_DIR.joinpath(*parts)
+    if ext_path.exists():
+        return ext_path
+    if ext_path.suffix == "":
+        if any((Path(str(ext_path) + ext)).exists() for ext in (".shp", ".shx", ".dbf", ".prj")):
+            return ext_path
+    return REPO_ROOT.joinpath(*parts)
 
 
 def _status_line(status: str, title: str, details: str) -> str:
@@ -113,8 +125,10 @@ def check_pickled_dataset(lines: list[str]) -> bool:
 
 
 def check_svi_and_tract_join(lines: list[str]) -> bool:
-    svi_path = REPO_ROOT / "SVI_2020_CaliforniaTract.csv"
-    tract_dbf = REPO_ROOT / "TIGER2020_CaliforniaTractsShapefile" / "tl_2020_06_tract.dbf"
+    svi_path = _resolve_external_path("SVI_2020_CaliforniaTract.csv")
+    tract_dbf = _resolve_external_path(
+        "TIGER2020_CaliforniaTractsShapefile", "tl_2020_06_tract.dbf"
+    )
     if not svi_path.exists() or not tract_dbf.exists():
         lines.append(_status_line("FAIL", "SVI/Tract join", "missing SVI CSV or tract DBF"))
         return False
@@ -153,7 +167,7 @@ def check_svi_and_tract_join(lines: list[str]) -> bool:
 
 
 def check_acs_json(lines: list[str]) -> bool:
-    acs_path = REPO_ROOT / "acs_2020_exposure.json"
+    acs_path = _resolve_external_path("acs_2020_exposure.json")
     if not acs_path.exists():
         lines.append(_status_line("FAIL", "ACS JSON", "acs_2020_exposure.json missing"))
         return False
@@ -195,9 +209,26 @@ def check_acs_json(lines: list[str]) -> bool:
 
 def check_vector_layers(lines: list[str]) -> bool:
     layers = [
-        ("Fire Perimeters", REPO_ROOT / "California_Historic_Fire_Perimeters_-6273763535668926275" / "California_Fire_Perimeters_(all)"),
-        ("Roads", REPO_ROOT / "CaliforniaRoads_InfraShapefile-CRS_-_Functional_Classification" / "CRS_-_Functional_Classification"),
-        ("Tracts", REPO_ROOT / "TIGER2020_CaliforniaTractsShapefile" / "tl_2020_06_tract"),
+        (
+            "Fire Perimeters",
+            _resolve_external_path(
+                "California_Historic_Fire_Perimeters_-6273763535668926275",
+                "California_Fire_Perimeters_(all)",
+            ),
+        ),
+        (
+            "Roads",
+            _resolve_external_path(
+                "CaliforniaRoads_InfraShapefile-CRS_-_Functional_Classification",
+                "CRS_-_Functional_Classification",
+            ),
+        ),
+        (
+            "Tracts",
+            _resolve_external_path(
+                "TIGER2020_CaliforniaTractsShapefile", "tl_2020_06_tract"
+            ),
+        ),
     ]
     ok = True
     for label, stem in layers:
@@ -221,9 +252,17 @@ def check_crs_decision(lines: list[str]) -> bool:
         lines.append(_status_line("FAIL", "CRS standard", "TARGET_CRS_EPSG is not set to 3310"))
         return False
 
-    roads_prj = (REPO_ROOT / "CaliforniaRoads_InfraShapefile-CRS_-_Functional_Classification" / "CRS_-_Functional_Classification.prj").read_text(encoding="utf-8", errors="ignore")
-    fire_prj = (REPO_ROOT / "California_Historic_Fire_Perimeters_-6273763535668926275" / "California_Fire_Perimeters_(all).prj").read_text(encoding="utf-8", errors="ignore")
-    tract_prj = (REPO_ROOT / "TIGER2020_CaliforniaTractsShapefile" / "tl_2020_06_tract.prj").read_text(encoding="utf-8", errors="ignore")
+    roads_prj = _resolve_external_path(
+        "CaliforniaRoads_InfraShapefile-CRS_-_Functional_Classification",
+        "CRS_-_Functional_Classification.prj",
+    ).read_text(encoding="utf-8", errors="ignore")
+    fire_prj = _resolve_external_path(
+        "California_Historic_Fire_Perimeters_-6273763535668926275",
+        "California_Fire_Perimeters_(all).prj",
+    ).read_text(encoding="utf-8", errors="ignore")
+    tract_prj = _resolve_external_path(
+        "TIGER2020_CaliforniaTractsShapefile", "tl_2020_06_tract.prj"
+    ).read_text(encoding="utf-8", errors="ignore")
 
     source_signals = []
     source_signals.append("roads:3857-like" if "Mercator_Auxiliary_Sphere" in roads_prj else "roads:other")

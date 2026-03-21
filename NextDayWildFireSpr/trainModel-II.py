@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import argparse
+import json
 import torch.multiprocessing as mp
 import torchvision
 import torch
@@ -44,39 +45,73 @@ def main():
     parser.add_argument('--epochs', default=10, type=int,
                         metavar='N',
                         help='number of total epochs to run')
+    parser.add_argument('--dataset_path', default=DATASET_PATH,
+                        help='Path to pickled dataset directory')
+    parser.add_argument('--channels_metadata', default=None,
+                        help='Optional JSON file with channel_names list')
+    parser.add_argument('--selected_features', default=None,
+                        help='Comma-separated feature names to keep (optional)')
     args = parser.parse_args()
     print(f'initializing training on single GPU')
     train(0, args)
 
-def create_data_loaders(rank, gpu, world_size, selected_features=None):
+def _load_channel_names(channels_metadata):
+    default_features = [
+        'elevation', 'pdsi', 'pr', 'sph', 'th', 'tmmn', 'tmmx', 'vs',
+        'erc', 'population', 'NDVI', 'PrevFireMask'
+    ]
+    if channels_metadata is None:
+        return default_features
+
+    if not os.path.exists(channels_metadata):
+        print(f"channels_metadata not found: {channels_metadata}; falling back to defaults.")
+        return default_features
+
+    try:
+        with open(channels_metadata, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        channel_names = payload.get("channel_names", [])
+        if isinstance(channel_names, list) and len(channel_names) > 0:
+            return channel_names
+    except Exception as exc:
+        print(f"failed to read channels_metadata ({channels_metadata}): {exc}")
+
+    print("invalid channels_metadata format; falling back to defaults.")
+    return default_features
+
+
+def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None, selected_features=None):
     batch_size = 64
 
-    ALL_FEATURES = [
-               'elevation','pdsi', 'pr', 'sph', 'th', 'tmmn','tmmx', 'vs', 
-        'erc', 'population', 'NDVI','PrevFireMask'
-    ]
+    all_features = _load_channel_names(channels_metadata)
+
+    if selected_features:
+        selected_features = [x.strip() for x in selected_features if x.strip()]
 
     if selected_features is not None:
-        feature_indices = [ALL_FEATURES.index(feature) for feature in selected_features]
+        missing = [feature for feature in selected_features if feature not in all_features]
+        if missing:
+            raise ValueError(f"selected features not found in channel list: {missing}")
+        feature_indices = [all_features.index(feature) for feature in selected_features]
         print(f"Using selected features: {selected_features}")
         print(f"Feature indices being used: {feature_indices}")
     else:
-        feature_indices = list(range(len(ALL_FEATURES)))
-        selected_features = ALL_FEATURES
+        feature_indices = list(range(len(all_features)))
+        selected_features = all_features
         print("Using all features by default.")
 
     print(f"\nSelected features and their indices:\n{list(zip(selected_features, feature_indices))}")
 
     datasets = {
         TRAIN: RotatedWildfireDataset(
-            f"{DATASET_PATH}/{TRAIN}.data",
-            f"{DATASET_PATH}/{TRAIN}.labels",
+            f"{dataset_path}/{TRAIN}.data",
+            f"{dataset_path}/{TRAIN}.labels",
             features=feature_indices,
             crop_size=64
         ),
         VAL: WildfireDataset(
-            f"{DATASET_PATH}/{VAL}.data",
-            f"{DATASET_PATH}/{VAL}.labels",
+            f"{dataset_path}/{VAL}.data",
+            f"{dataset_path}/{VAL}.labels",
             features=feature_indices,
             crop_size=64
         )
@@ -99,7 +134,11 @@ def create_data_loaders(rank, gpu, world_size, selected_features=None):
         )
     }
 
-    return dataLoaders
+    num_input_channels = len(feature_indices)
+    print(f"dataset_path={dataset_path}")
+    print(f"num_input_channels={num_input_channels}")
+
+    return dataLoaders, num_input_channels
 
 def perform_validation(model, loader):
     model.eval()
@@ -159,11 +198,22 @@ def train(gpu, args):
     validate = True
     print("Current GPU", gpu, "\n RANK: ", rank)
 
-    dataLoaders = create_data_loaders(rank, gpu, args.gpus * args.nodes)
+    selected_features = None
+    if args.selected_features:
+        selected_features = args.selected_features.split(",")
+
+    dataLoaders, num_input_channels = create_data_loaders(
+        rank,
+        gpu,
+        args.gpus * args.nodes,
+        dataset_path=args.dataset_path,
+        channels_metadata=args.channels_metadata,
+        selected_features=selected_features,
+    )
 
     torch.manual_seed(0)
 
-    model = U_Net(12, 1)
+    model = U_Net(num_input_channels, 1)
     torch.cuda.set_device(gpu)
     model.cuda(gpu)
 

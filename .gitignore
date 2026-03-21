@@ -3,3 +3,5 @@ Ext_Datasets
 NextDayWildFireSpr/archive
 NextDayWildFireSpr/data
 NextDayWildFireSpr/savedModels
+__pycache__/
+*.pyc
