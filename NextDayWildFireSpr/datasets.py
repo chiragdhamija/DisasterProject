@@ -86,9 +86,10 @@ class WildfireDataset(torch.utils.data.Dataset):
 
 class RotatedWildfireDataset(torch.utils.data.Dataset):
     # This dataset probably doesn't work if you use the wind direction feature
-    def __init__(self, data_filename, labels_filename, features=None, crop_size=64):
+    def __init__(self, data_filename, labels_filename, features=None, crop_size=64, random_flip=False):
         self.data, self.labels = unpickle(data_filename), unpickle(labels_filename)
         self.crop_size = crop_size
+        self.random_flip = random_flip
 
         random.seed(1)
         self.crop_map, self.good_indices = new_random_crop(self.labels, self.crop_size)
@@ -126,6 +127,14 @@ class RotatedWildfireDataset(torch.utils.data.Dataset):
         rotation = rotations[rotation_index]
         cropped_features = torchvision.transforms.functional.rotate(torch.from_numpy(cropped_features), rotation)
         cropped_label = torchvision.transforms.functional.rotate(torch.from_numpy(np.expand_dims(cropped_label, axis=0)), rotation)
+
+        if self.random_flip:
+            if random.random() < 0.5:
+                cropped_features = torch.flip(cropped_features, dims=[1])
+                cropped_label = torch.flip(cropped_label, dims=[1])
+            if random.random() < 0.5:
+                cropped_features = torch.flip(cropped_features, dims=[2])
+                cropped_label = torch.flip(cropped_label, dims=[2])
 
         sample = (cropped_features, cropped_label)
         

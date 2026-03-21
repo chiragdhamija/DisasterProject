@@ -63,6 +63,11 @@ Key behavior:
 - Uses **all channels** from dataset (no feature subset flag required)
 - Auto device: CUDA if available, else CPU fallback
 - Loss: `BCEWithLogitsLoss` (with positive class weighting)
+- Optimizer: `AdamW` (learning rate + weight decay configurable)
+- LR policy: `ReduceLROnPlateau` on validation F1
+- Stabilization: gradient clipping (`max_norm` configurable)
+- Overfitting control: early stopping on validation F1 (`patience` + `min_delta`)
+- Training-only augmentation: rotation (existing) + optional random horizontal/vertical flips (`--random_flip`)
 - Validation metrics: Loss, IoU, Accuracy, F1, AUC, Dice, Precision, Recall
 
 ## Data Construction

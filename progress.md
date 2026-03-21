@@ -84,8 +84,51 @@ Build a **hazard-first wildfire pipeline**:
   - `Best epoch: 2` (0-based index, i.e. epoch 3)
   - `Best F1 score: 0.6518347859382629`
 
+## Overfitting Mitigation Update (Implemented)
+- Updated trainer (`NextDayWildFireSpr/trainModel-II.py`) with:
+  - `AdamW` optimizer (`--learning_rate`, `--weight_decay`)
+  - `ReduceLROnPlateau` scheduler on validation F1 (`--lr_factor`, `--lr_patience`)
+  - Gradient clipping (`--grad_clip`)
+  - Early stopping on validation F1 (`--early_stop_patience`, `--min_delta`)
+  - Configurable `--pos_weight` for class imbalance
+- Updated dataset augmentation (`NextDayWildFireSpr/datasets.py`):
+  - Added training-only random horizontal/vertical flips in `RotatedWildfireDataset`
+  - Flip augmentation is now optional via `--random_flip` (default off)
+  - Existing 0/90/180/270 rotation augmentation retained
+- Sanity checked:
+  - Syntax compile passed for modified files.
+  - Zero-epoch dry run completed with canonical dataset and channel mapping.
+
+## Latest Regularized Run (8 Epoch Budget, Early Stop at 5)
+- Command profile:
+  - `learning_rate=8e-4`, `weight_decay=3e-4`, `pos_weight=5`, `grad_clip=1.0`
+  - `lr_factor=0.5`, `lr_patience=1`, `early_stop_patience=3`, `min_delta=0.001`
+- Outcome:
+  - Early stopping triggered at epoch 5.
+  - Best epoch: 1 (0-based, i.e. epoch 2)
+  - Best F1: `0.6350`
+- Interpretation:
+  - Overfitting control works (late-epoch overtraining prevented),
+  - but this setting underperforms the prior best canonical run (`F1=0.6518`), so regularization is currently too strong.
+
+## Latest Tuned Run (10 Epoch Budget, Early Stop at 6)
+- Command profile:
+  - `learning_rate=7e-4`, `weight_decay=1e-4`, `pos_weight=4`, `grad_clip=1.0`
+  - `lr_factor=0.6`, `lr_patience=2`, `early_stop_patience=4`, `min_delta=0.0005`
+  - `random_flip=False`
+- Outcome:
+  - Early stopping triggered at epoch 6.
+  - Best epoch: 1 (0-based, i.e. epoch 2)
+  - Best F1: `0.6507`
+  - Best IoU: `0.5860`
+  - Best AUC: `0.9317`
+- Interpretation:
+  - This recovered most of the previous performance while still preventing late-epoch degradation.
+  - It remains marginally below historical best (`F1=0.6518`), difference `0.0011`.
+  - Practical decision: treat current checkpoint as acceptable and proceed to hazard inference + risk fusion.
+
 ## Next Steps
-1. Train hazard model (10 epochs baseline run).
+1. Re-run with milder regularization and flips off by default (new `--random_flip` flag is optional).
 2. Freeze best hazard model and generate hazard probabilities per sample/tile.
 3. Build exposure and vulnerability indices from external layers.
 4. Fuse `Hazard + Exposure + Vulnerability` into final California risk map.

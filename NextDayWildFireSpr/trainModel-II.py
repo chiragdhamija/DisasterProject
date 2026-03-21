@@ -3,7 +3,6 @@ from datetime import datetime
 import argparse
 import json
 import torch.multiprocessing as mp
-import torchvision
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -50,6 +49,24 @@ def main():
                         help='Path to pickled dataset directory')
     parser.add_argument('--channels_metadata', default=CHANNELS_METADATA_PATH,
                         help='JSON file containing channel_names list')
+    parser.add_argument('--learning_rate', default=1e-3, type=float,
+                        help='Optimizer learning rate')
+    parser.add_argument('--weight_decay', default=1e-4, type=float,
+                        help='L2 regularization strength for AdamW')
+    parser.add_argument('--pos_weight', default=5.0, type=float,
+                        help='Positive class weight for BCEWithLogitsLoss')
+    parser.add_argument('--grad_clip', default=1.0, type=float,
+                        help='Gradient clipping max norm')
+    parser.add_argument('--early_stop_patience', default=3, type=int,
+                        help='Stop training when validation F1 does not improve')
+    parser.add_argument('--min_delta', default=1e-4, type=float,
+                        help='Minimum F1 improvement to reset early stopping')
+    parser.add_argument('--lr_factor', default=0.5, type=float,
+                        help='ReduceLROnPlateau multiplicative factor')
+    parser.add_argument('--lr_patience', default=1, type=int,
+                        help='Number of bad epochs before LR reduction')
+    parser.add_argument('--random_flip', action='store_true',
+                        help='Enable random H/V flips in training augmentation')
     args = parser.parse_args()
     print(f'initializing training on single GPU')
     train(0, args)
@@ -80,7 +97,7 @@ def _load_channel_names(channels_metadata, num_input_channels):
     return fallback
 
 
-def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None):
+def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None, random_flip=False):
     batch_size = 64
 
     datasets = {
@@ -88,7 +105,8 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
             f"{dataset_path}/{TRAIN}.data",
             f"{dataset_path}/{TRAIN}.labels",
             features=None,
-            crop_size=64
+            crop_size=64,
+            random_flip=random_flip,
         ),
         VAL: WildfireDataset(
             f"{dataset_path}/{VAL}.data",
@@ -152,18 +170,18 @@ def perform_validation(model, loader, device):
             
             # Compute metrics
             total_loss += loss(labels, outputs).item()
-            total_iou += mean_iou(labels, outputs)
-            total_accuracy += accuracy(labels, outputs)
-            total_f1 += f1_score(labels, outputs)
+            total_iou += float(mean_iou(labels, outputs))
+            total_accuracy += float(accuracy(labels, outputs))
+            total_f1 += float(f1_score(labels, outputs))
             auc_val = auc_score(labels, outputs)
             if not np.isnan(auc_val):
-                total_auc += auc_val
+                total_auc += float(auc_val)
                 valid_auc_count += 1
-            total_dice += dice_score(labels, outputs)
+            total_dice += float(dice_score(labels, outputs))
             
             precision, recall = precision_recall(labels, outputs)
-            total_precision += precision
-            total_recall += recall
+            total_precision += float(precision)
+            total_recall += float(recall)
 
     avg_loss = total_loss / len(loader)
     avg_iou = total_iou / len(loader)
@@ -192,6 +210,7 @@ def train(gpu, args):
         args.gpus * args.nodes,
         dataset_path=args.dataset_path,
         channels_metadata=args.channels_metadata,
+        random_flip=args.random_flip,
     )
 
     torch.manual_seed(0)
@@ -205,13 +224,27 @@ def train(gpu, args):
         device = torch.device("cpu")
     model.to(device)
 
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([5])).to(device)
-  
+    criterion = nn.BCEWithLogitsLoss(
+        pos_weight=torch.tensor([args.pos_weight], dtype=torch.float32, device=device)
+    ).to(device)
 
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=0.003, momentum=0.9)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
+    )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="max",
+        factor=args.lr_factor,
+        patience=args.lr_patience,
+        threshold=args.min_delta,
+        min_lr=1e-6,
+    )
 
     start = datetime.now()
     print(f'TRAINING ON: {platform.node()}, Starting at: {datetime.now()}')
+    print(f"random_flip={args.random_flip}")
 
     total_step = len(dataLoaders[TRAIN])
     best_epoch = 0
@@ -219,6 +252,7 @@ def train(gpu, args):
 
     train_loss_history = []
     val_metrics_history = []
+    epochs_without_improvement = 0
 
     for epoch in range(args.epochs):
         model.train()
@@ -227,7 +261,7 @@ def train(gpu, args):
 
         for i, (images, labels) in enumerate(dataLoaders[TRAIN]):
             images = images.to(device, non_blocking=torch.cuda.is_available())
-            labels = labels.to(device, non_blocking=torch.cuda.is_available())
+            labels = labels.to(device, non_blocking=torch.cuda.is_available()).float()
 
             # Forward pass
             outputs = model(images)
@@ -246,6 +280,8 @@ def train(gpu, args):
             # Backward and optimize
             optimizer.zero_grad()
             loss.backward()
+            if args.grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
             optimizer.step()
 
             if i % 20 == 0:
@@ -265,15 +301,28 @@ def train(gpu, args):
 
             curr_avg_loss_val, _, _, curr_f1_score, _, _, _, _ = metrics
 
-            if best_f1_score < curr_f1_score:
+            scheduler.step(curr_f1_score)
+            current_lr = optimizer.param_groups[0]["lr"]
+            print(f"Epoch [{epoch + 1}/{args.epochs}] LR: {current_lr:.6g}")
+
+            if curr_f1_score > (best_f1_score + args.min_delta):
                 print("Saving model...")
                 best_epoch = epoch
                 best_f1_score = curr_f1_score
                 filename = f'model-{model.__class__.__name__}-bestF1Score-Rank-{rank}.weights'
                 torch.save(model.state_dict(), f'{SAVE_MODEL_PATH}/{filename}')
                 print("Model has been saved!")
+                epochs_without_improvement = 0
             else:
                 print("Model is not being saved")
+                epochs_without_improvement += 1
+
+            if epochs_without_improvement >= args.early_stop_patience:
+                print(
+                    f"Early stopping triggered at epoch {epoch + 1} "
+                    f"(no F1 improvement for {epochs_without_improvement} epoch(s))."
+                )
+                break
 
     pickle.dump(train_loss_history, open(f"{SAVE_MODEL_PATH}/train_loss_history.pkl", "wb"))
     pickle.dump(val_metrics_history, open(f"{SAVE_MODEL_PATH}/val_metrics_history.pkl", "wb"))

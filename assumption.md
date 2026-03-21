@@ -58,7 +58,12 @@
 - Training script uses **all channels in the dataset** by default.
 - No `selected_features` filtering is used in the canonical workflow.
 - Model architecture is `U_Net` (`NextDayWildFireSpr/leejunhyun_unet_models.py`).
-- Loss is `BCEWithLogitsLoss` with class weighting.
+- Loss is `BCEWithLogitsLoss` with class weighting (`pos_weight` configurable).
+- Optimizer is `AdamW` with configurable `learning_rate` and `weight_decay`.
+- Learning rate uses `ReduceLROnPlateau` monitored on validation F1.
+- Gradient clipping is applied (`--grad_clip`) to reduce unstable updates.
+- Early stopping is enabled on validation F1 (`--early_stop_patience`, `--min_delta`).
+- Training augmentation includes rotation; random horizontal/vertical flips are optional (`--random_flip`).
 - Inference hazard probability is computed with `sigmoid(logits)`.
 - Optional binary hazard map threshold is assumed to be `0.5` unless tuned later.
 

@@ -1,4 +1,14 @@
-rProject/Wildfire-Spread-Prediction/NextDayWildFireSpr$ python trainModel-II.py --epochs 5
+DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr$ 
+python trainModel-II.py \
+  --epochs 10 \
+  --learning_rate 7e-4 \
+  --weight_decay 1e-4 \
+  --pos_weight 4 \
+  --grad_clip 1.0 \
+  --lr_factor 0.6 \
+  --lr_patience 2 \
+  --early_stop_patience 4 \
+  --min_delta 0.0005
 initializing training on single GPU
 Current GPU 0 
  RANK:  0
@@ -19,71 +29,90 @@ Using all channels (15):
 [('elevation', 0), ('th', 1), ('vs', 2), ('tmmn', 3), ('tmmx', 4), ('sph', 5), ('pr', 6), ('pdsi', 7), ('NDVI', 8), ('population', 9), ('erc', 10), ('PrevFireMask', 11), ('meta_lon_z', 12), ('meta_lat_z', 13), ('meta_day_of_year_z', 14)]
 dataset_path=data/next-day-wildfire-spread-ca-hazard
 num_input_channels=15
-TRAINING ON: chirag-Legion-5-16IRX9, Starting at: 2026-03-22 04:05:23.732596
-Epoch [1/5], Steps [0/146], Loss: 0.6876
-Epoch [1/5], Steps [20/146], Loss: 0.2611
-Epoch [1/5], Steps [40/146], Loss: 0.3028
-Epoch [1/5], Steps [60/146], Loss: 0.2875
-Epoch [1/5], Steps [80/146], Loss: 0.2677
-Epoch [1/5], Steps [100/146], Loss: 0.2486
-Epoch [1/5], Steps [120/146], Loss: 0.2062
-Epoch [1/5], Steps [140/146], Loss: 0.2315
-Validation - Loss: 3.1525, IoU: 0.4967, Accuracy: 0.9933
-F1 Score: 0.4983, AUC: 0.9261, Dice: 0.4983
-Precision: 0.4967, Recall: 0.5000
+TRAINING ON: chirag-Legion-5-16IRX9, Starting at: 2026-03-22 04:44:25.922848
+random_flip=False
+Epoch [1/10], Steps [0/146], Loss: 0.6743
+Epoch [1/10], Steps [20/146], Loss: 0.3430
+Epoch [1/10], Steps [40/146], Loss: 0.3214
+Epoch [1/10], Steps [60/146], Loss: 0.2758
+Epoch [1/10], Steps [80/146], Loss: 0.2410
+Epoch [1/10], Steps [100/146], Loss: 0.2369
+Epoch [1/10], Steps [120/146], Loss: 0.2007
+Epoch [1/10], Steps [140/146], Loss: 0.2152
+Validation - Loss: 2.6661, IoU: 0.5086, Accuracy: 0.9740
+F1 Score: 0.5329, AUC: 0.9263, Dice: 0.5329
+Precision: 0.5482, Recall: 0.6118
+Epoch [1/10] LR: 0.0007
 Saving model...
 Model has been saved!
-Epoch [2/5], Steps [0/146], Loss: 0.2295
-Epoch [2/5], Steps [20/146], Loss: 0.1940
-Epoch [2/5], Steps [40/146], Loss: 0.2073
-Epoch [2/5], Steps [60/146], Loss: 0.2136
-Epoch [2/5], Steps [80/146], Loss: 0.2803
-Epoch [2/5], Steps [100/146], Loss: 0.2122
-Epoch [2/5], Steps [120/146], Loss: 0.2117
-Epoch [2/5], Steps [140/146], Loss: 0.2286
-Validation - Loss: 2.2025, IoU: 0.5676, Accuracy: 0.9751
-F1 Score: 0.6294, AUC: 0.9405, Dice: 0.6294
-Precision: 0.5867, Recall: 0.8099
+Epoch [2/10], Steps [0/146], Loss: 0.2017
+Epoch [2/10], Steps [20/146], Loss: 0.1807
+Epoch [2/10], Steps [40/146], Loss: 0.1851
+Epoch [2/10], Steps [60/146], Loss: 0.1858
+Epoch [2/10], Steps [80/146], Loss: 0.2275
+Epoch [2/10], Steps [100/146], Loss: 0.1790
+Epoch [2/10], Steps [120/146], Loss: 0.1709
+Epoch [2/10], Steps [140/146], Loss: 0.2121
+Validation - Loss: 2.1751, IoU: 0.5860, Accuracy: 0.9853
+F1 Score: 0.6507, AUC: 0.9317, Dice: 0.6507
+Precision: 0.6106, Recall: 0.7619
+Epoch [2/10] LR: 0.0007
 Saving model...
 Model has been saved!
-Epoch [3/5], Steps [0/146], Loss: 0.2004
-Epoch [3/5], Steps [20/146], Loss: 0.1631
-Epoch [3/5], Steps [40/146], Loss: 0.1506
-Epoch [3/5], Steps [60/146], Loss: 0.2611
-Epoch [3/5], Steps [80/146], Loss: 0.1640
-Epoch [3/5], Steps [100/146], Loss: 0.2341
-Epoch [3/5], Steps [120/146], Loss: 0.2013
-Epoch [3/5], Steps [140/146], Loss: 0.2103
-Validation - Loss: 2.2522, IoU: 0.5885, Accuracy: 0.9921
-F1 Score: 0.6518, AUC: 0.9435, Dice: 0.6518
-Precision: 0.7329, Recall: 0.6308
-Saving model...
-Model has been saved!
-Epoch [4/5], Steps [0/146], Loss: 0.1974
-Epoch [4/5], Steps [20/146], Loss: 0.1595
-Epoch [4/5], Steps [40/146], Loss: 0.1749
-Epoch [4/5], Steps [60/146], Loss: 0.2000
-Epoch [4/5], Steps [80/146], Loss: 0.1656
-Epoch [4/5], Steps [100/146], Loss: 0.1856
-Epoch [4/5], Steps [120/146], Loss: 0.1840
-Epoch [4/5], Steps [140/146], Loss: 0.1760
-Validation - Loss: 2.6237, IoU: 0.5618, Accuracy: 0.9766
-F1 Score: 0.6208, AUC: 0.9453, Dice: 0.6208
-Precision: 0.5825, Recall: 0.8542
+Epoch [3/10], Steps [0/146], Loss: 0.1767
+Epoch [3/10], Steps [20/146], Loss: 0.1396
+Epoch [3/10], Steps [40/146], Loss: 0.1330
+Epoch [3/10], Steps [60/146], Loss: 0.2173
+Epoch [3/10], Steps [80/146], Loss: 0.1487
+Epoch [3/10], Steps [100/146], Loss: 0.1933
+Epoch [3/10], Steps [120/146], Loss: 0.1739
+Epoch [3/10], Steps [140/146], Loss: 0.1622
+Validation - Loss: 3.0750, IoU: 0.5374, Accuracy: 0.9933
+F1 Score: 0.5690, AUC: 0.9155, Dice: 0.5690
+Precision: 0.6709, Recall: 0.5484
+Epoch [3/10] LR: 0.0007
 Model is not being saved
-Epoch [5/5], Steps [0/146], Loss: 0.2001
-Epoch [5/5], Steps [20/146], Loss: 0.1672
-Epoch [5/5], Steps [40/146], Loss: 0.1558
-Epoch [5/5], Steps [60/146], Loss: 0.1751
-Epoch [5/5], Steps [80/146], Loss: 0.1916
-Epoch [5/5], Steps [100/146], Loss: 0.1676
-Epoch [5/5], Steps [120/146], Loss: 0.1374
-Epoch [5/5], Steps [140/146], Loss: 0.1900
-Validation - Loss: 3.2426, IoU: 0.5716, Accuracy: 0.9927
-F1 Score: 0.6275, AUC: 0.9489, Dice: 0.6275
-Precision: 0.6869, Recall: 0.6023
+Epoch [4/10], Steps [0/146], Loss: 0.1673
+Epoch [4/10], Steps [20/146], Loss: 0.1408
+Epoch [4/10], Steps [40/146], Loss: 0.1543
+Epoch [4/10], Steps [60/146], Loss: 0.1634
+Epoch [4/10], Steps [80/146], Loss: 0.1381
+Epoch [4/10], Steps [100/146], Loss: 0.1785
+Epoch [4/10], Steps [120/146], Loss: 0.1620
+Epoch [4/10], Steps [140/146], Loss: 0.1686
+Validation - Loss: 2.4413, IoU: 0.5304, Accuracy: 0.9572
+F1 Score: 0.5808, AUC: 0.9036, Dice: 0.5808
+Precision: 0.5562, Recall: 0.7695
+Epoch [4/10] LR: 0.0007
 Model is not being saved
-Training complete in: 0:02:56.347544
-Endtime: 2026-03-22 04:08:20.080150
-Best epoch: 2
-Best F1 score: 0.6518347859382629
+Epoch [5/10], Steps [0/146], Loss: 0.1683
+Epoch [5/10], Steps [20/146], Loss: 0.1492
+Epoch [5/10], Steps [40/146], Loss: 0.1353
+Epoch [5/10], Steps [60/146], Loss: 0.1733
+Epoch [5/10], Steps [80/146], Loss: 0.1589
+Epoch [5/10], Steps [100/146], Loss: 0.1498
+Epoch [5/10], Steps [120/146], Loss: 0.1284
+Epoch [5/10], Steps [140/146], Loss: 0.1610
+Validation - Loss: 3.4662, IoU: 0.5415, Accuracy: 0.9932
+F1 Score: 0.5778, AUC: 0.9202, Dice: 0.5778
+Precision: 0.6849, Recall: 0.5533
+Epoch [5/10] LR: 0.00042
+Model is not being saved
+Epoch [6/10], Steps [0/146], Loss: 0.1503
+Epoch [6/10], Steps [20/146], Loss: 0.1444
+Epoch [6/10], Steps [40/146], Loss: 0.1368
+Epoch [6/10], Steps [60/146], Loss: 0.1173
+Epoch [6/10], Steps [80/146], Loss: 0.1567
+Epoch [6/10], Steps [100/146], Loss: 0.1207
+Epoch [6/10], Steps [120/146], Loss: 0.1623
+Epoch [6/10], Steps [140/146], Loss: 0.1285
+Validation - Loss: 3.3281, IoU: 0.5473, Accuracy: 0.9931
+F1 Score: 0.5862, AUC: 0.9256, Dice: 0.5862
+Precision: 0.6743, Recall: 0.5618
+Epoch [6/10] LR: 0.00042
+Model is not being saved
+Early stopping triggered at epoch 6 (no F1 improvement for 4 epoch(s)).
+Training complete in: 0:03:32.228452
+Endtime: 2026-03-22 04:47:58.151304
+Best epoch: 1
+Best F1 score: 0.6507031718889872
