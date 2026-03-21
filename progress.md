@@ -151,3 +151,30 @@
 1. Run enhanced smoke training (1-2 epochs) and baseline comparison on aligned split.
 2. Build risk fusion outputs (`hazard`, `exposure`, `vulnerability`, `composite`) and tract-level rankings.
 3. Export map artifacts for California and wire a minimal frontend for visualization.
+
+### Completed (Training Debug Block)
+- Root-cause analysis on failed HEV training run:
+  - Observed exploding negative loss and validation AUC crash.
+  - Verified exported `FireMask` and `PrevFireMask` values were categorical MODIS codes (`3,5,8,9`) instead of binary.
+- Fixes implemented:
+  - Updated `NextDayWildFireSpr/tools/build_enhanced_pickles.py`:
+    - Added fire-mask conversion logic:
+      - if mask range is NDWS-like `[-1, 1]`, use `(mask > 0)`.
+      - else (MODIS classes), use `(mask >= 7)` as fire.
+    - Applied conversion to both `FireMask` labels and `PrevFireMask` input channel.
+  - Updated `NextDayWildFireSpr/metrics.py`:
+    - Hardened `auc_score` by forcing binary labels and returning `nan` safely on invalid AUC cases.
+  - Updated `NextDayWildFireSpr/trainModel-II.py`:
+    - AUC averaging now ignores `nan` values.
+    - Added device fallback (`cuda` if available, else `cpu`) for portability.
+- Rebuilt enhanced pickles after fixes:
+  - `train=(2334, 21, 64, 64)`, `validation=(158, 21, 64, 64)`, `test=(291, 21, 64, 64)`
+  - Integrity: `missing_in_hev=0`, `parse_errors=0`
+  - Confirmed `labels` and `PrevFireMask` now binary (`0/1`) across splits.
+- Post-fix smoke training (`1 epoch`) result:
+  - Loss remained stable positive (no negative explosion).
+  - Validation completed without crash:
+    - `Validation Loss=2.7871`
+    - `IoU=0.4967`, `Accuracy=0.9933`
+    - `F1=0.4983`, `AUC=0.9474`, `Dice=0.4983`
+  - Model save path triggered successfully.

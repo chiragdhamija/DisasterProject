@@ -140,7 +140,7 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
 
     return dataLoaders, num_input_channels
 
-def perform_validation(model, loader):
+def perform_validation(model, loader, device):
     model.eval()
 
     total_loss = 0
@@ -148,14 +148,15 @@ def perform_validation(model, loader):
     total_accuracy = 0
     total_f1 = 0
     total_auc = 0
+    valid_auc_count = 0
     total_dice = 0
     total_precision = 0
     total_recall = 0
 
     with torch.no_grad():
         for i, (images, labels) in enumerate(loader):
-            images = images.cuda(non_blocking=True)
-            labels = labels.cuda(non_blocking=True)
+            images = images.to(device, non_blocking=torch.cuda.is_available())
+            labels = labels.to(device, non_blocking=torch.cuda.is_available())
 
 
              # Forward pass
@@ -170,7 +171,10 @@ def perform_validation(model, loader):
             total_iou += mean_iou(labels, outputs)
             total_accuracy += accuracy(labels, outputs)
             total_f1 += f1_score(labels, outputs)
-            total_auc += auc_score(labels, outputs)
+            auc_val = auc_score(labels, outputs)
+            if not np.isnan(auc_val):
+                total_auc += auc_val
+                valid_auc_count += 1
             total_dice += dice_score(labels, outputs)
             
             precision, recall = precision_recall(labels, outputs)
@@ -181,7 +185,7 @@ def perform_validation(model, loader):
     avg_iou = total_iou / len(loader)
     avg_accuracy = total_accuracy / len(loader)
     avg_f1 = total_f1 / len(loader)
-    avg_auc = total_auc / len(loader)
+    avg_auc = total_auc / valid_auc_count if valid_auc_count > 0 else float("nan")
     avg_dice = total_dice / len(loader)
     avg_precision = total_precision / len(loader)
     avg_recall = total_recall / len(loader)
@@ -214,11 +218,15 @@ def train(gpu, args):
     torch.manual_seed(0)
 
     model = U_Net(num_input_channels, 1)
-    torch.cuda.set_device(gpu)
-    model.cuda(gpu)
+    use_cuda = torch.cuda.is_available()
+    if use_cuda:
+        torch.cuda.set_device(gpu)
+        device = torch.device(f"cuda:{gpu}")
+    else:
+        device = torch.device("cpu")
+    model.to(device)
 
-
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([5])).cuda(gpu)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([5])).to(device)
   
 
     optimizer = torch.optim.RMSprop(model.parameters(), lr=0.003, momentum=0.9)
@@ -239,8 +247,8 @@ def train(gpu, args):
         loss_train = 0
 
         for i, (images, labels) in enumerate(dataLoaders[TRAIN]):
-            images = images.cuda(non_blocking=True)
-            labels = labels.cuda(non_blocking=True)
+            images = images.to(device, non_blocking=torch.cuda.is_available())
+            labels = labels.to(device, non_blocking=torch.cuda.is_available())
 
             # Forward pass
             outputs = model(images)
@@ -273,7 +281,7 @@ def train(gpu, args):
         train_loss_history.append(loss_train / len(dataLoaders[TRAIN]))
 
         if validate:
-            metrics = perform_validation(model, dataLoaders[VAL])
+            metrics = perform_validation(model, dataLoaders[VAL], device)
             val_metrics_history.append(metrics)
 
             curr_avg_loss_val, _, _, curr_f1_score, _, _, _, _ = metrics

@@ -133,11 +133,17 @@ def auc_score(gold_mask, pred_mask):
     mask = gold_mask != -1
     gold_mask_masked = gold_mask[mask].float().cpu().numpy()
     pred_mask_masked = torch.sigmoid(pred_mask[mask]).detach().cpu().numpy()
-    
+
+    # Ensure binary labels for AUC even if upstream labels are categorical codes.
+    gold_mask_masked = (gold_mask_masked > 0).astype(np.int32)
+
     # Handle cases where all labels are the same (e.g., all 0s or all 1s)
     if len(np.unique(gold_mask_masked)) == 1:
         return np.nan
-    return roc_auc_score(gold_mask_masked, pred_mask_masked)
+    try:
+        return roc_auc_score(gold_mask_masked, pred_mask_masked)
+    except ValueError:
+        return np.nan
 
 def precision_recall(gold_mask, pred_mask):
     """

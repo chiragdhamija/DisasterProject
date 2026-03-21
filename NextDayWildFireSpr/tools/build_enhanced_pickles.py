@@ -87,6 +87,24 @@ def _read_array_feature(example: "tf.train.Example", key: str, tile_size: int) -
     return values.reshape((tile_size, tile_size))
 
 
+def _to_binary_fire_mask(arr: np.ndarray) -> np.ndarray:
+    """Converts fire mask representations to binary 0/1.
+
+    Handles both:
+    - NDWS-style binary masks in [-1, 0, 1]
+    - MODIS categorical codes (e.g. 3, 5, 8, 9), where >=7 is treated as fire.
+    """
+    arr = arr.astype(np.float32)
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return np.zeros_like(arr, dtype=np.float32)
+
+    if finite.max() <= 1.0 and finite.min() >= -1.0:
+        return (arr > 0).astype(np.float32)
+
+    return (arr >= 7.0).astype(np.float32)
+
+
 def _prepare_hev_table(
     hev_csv: Path,
     extra_channels: list[str],
@@ -194,7 +212,9 @@ def build_pickles(
                     example.ParseFromString(bytes(raw_record.numpy()))
 
                     base_stack = [
-                        _read_array_feature(example, key, tile_size)
+                        _to_binary_fire_mask(_read_array_feature(example, key, tile_size))
+                        if key == "PrevFireMask"
+                        else _read_array_feature(example, key, tile_size)
                         for key in BASE_CHANNELS
                     ]
                     extra_stack = [
@@ -206,7 +226,9 @@ def build_pickles(
                         for col in extra_channels
                     ]
                     x = np.stack(base_stack + extra_stack, axis=0).astype(np.float32)
-                    y = _read_array_feature(example, LABEL_KEY, tile_size).astype(np.float32)
+                    y = _to_binary_fire_mask(
+                        _read_array_feature(example, LABEL_KEY, tile_size)
+                    ).astype(np.float32)
                 except Exception:
                     parse_errors += 1
                     continue

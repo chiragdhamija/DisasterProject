@@ -1,0 +1,92 @@
+dFireSpr$ python trainModel-II.py   --epochs 5   --dataset_path data/next-day-wildfire-spread-hev   --channels_metad
+ata data/next-day-wildfire-spread-hev/channels_metadata.json   
+initializing training on single GPU
+Current GPU 0 
+ RANK:  0
+Using all features by default.
+
+Selected features and their indices:
+[('elevation', 0), ('th', 1), ('vs', 2), ('tmmn', 3), ('tmmx', 4), ('sph', 5), ('pr', 6), ('pdsi', 7), ('NDVI', 8), ('population', 9), ('erc', 10), ('PrevFireMask', 11), ('z_exposure_pop_density_km2', 12), ('z_exposure_housing_density_km2', 13), ('z_acs_median_home_value', 14), ('z_svi_rpl_themes', 15), ('z_road_nearest_dist_m', 16), ('z_tract_nearest_dist_m', 17), ('z_past_fire_count_5y_10km', 18), ('z_past_fire_acres_5y_10km', 19), ('z_days_since_fire_min_5y_10km', 20)]
+data size: 803045376
+label size: 38240256
+crop_map size: 37344
+good_indices size: 18672
+total size: 841341648
+finished initializing RotatedWildfireDataset
+data size: 54362112
+label size: 2588672
+crop_map size: 2528
+good_indices size: 1264
+total size: 56954576
+finished initializing WildfireDataset
+dataset_path=data/next-day-wildfire-spread-hev
+num_input_channels=21
+TRAINING ON: chirag-Legion-5-16IRX9, Starting at: 2026-03-22 00:59:30.362328
+Epoch [1/5], Steps [0/146], Loss: 0.8541
+Epoch [1/5], Steps [20/146], Loss: 0.2971
+Epoch [1/5], Steps [40/146], Loss: 0.2454
+Epoch [1/5], Steps [60/146], Loss: 0.2620
+Epoch [1/5], Steps [80/146], Loss: 0.2057
+Epoch [1/5], Steps [100/146], Loss: 0.2077
+Epoch [1/5], Steps [120/146], Loss: 0.2083
+Epoch [1/5], Steps [140/146], Loss: 0.2166
+Validation - Loss: 3.3343, IoU: 0.4967, Accuracy: 0.9933
+F1 Score: 0.4983, AUC: 0.9421, Dice: 0.4983
+Precision: 0.4967, Recall: 0.5000
+Saving model...
+Model has been saved!
+Epoch [2/5], Steps [0/146], Loss: 0.1742
+Epoch [2/5], Steps [20/146], Loss: 0.2492
+Epoch [2/5], Steps [40/146], Loss: 0.1944
+Epoch [2/5], Steps [60/146], Loss: 0.1728
+Epoch [2/5], Steps [80/146], Loss: 0.2031
+Epoch [2/5], Steps [100/146], Loss: 0.2630
+Epoch [2/5], Steps [120/146], Loss: 0.2039
+Epoch [2/5], Steps [140/146], Loss: 0.2194
+Validation - Loss: 2.7856, IoU: 0.5338, Accuracy: 0.9928
+F1 Score: 0.5611, AUC: 0.9537, Dice: 0.5611
+Precision: 0.5857, Recall: 0.5505
+Saving model...
+Model has been saved!
+Epoch [3/5], Steps [0/146], Loss: 0.2054
+Epoch [3/5], Steps [20/146], Loss: 0.1812
+Epoch [3/5], Steps [40/146], Loss: 0.1643
+Epoch [3/5], Steps [60/146], Loss: 0.1679
+Epoch [3/5], Steps [80/146], Loss: 0.1738
+Epoch [3/5], Steps [100/146], Loss: 0.1777
+Epoch [3/5], Steps [120/146], Loss: 0.1540
+Epoch [3/5], Steps [140/146], Loss: 0.1950
+Validation - Loss: 2.8938, IoU: 0.5912, Accuracy: 0.9928
+F1 Score: 0.6574, AUC: 0.9560, Dice: 0.6574
+Precision: 0.7119, Recall: 0.6279
+Saving model...
+Model has been saved!
+Epoch [4/5], Steps [0/146], Loss: 0.1446
+Epoch [4/5], Steps [20/146], Loss: 0.2154
+Epoch [4/5], Steps [40/146], Loss: 0.2087
+Epoch [4/5], Steps [60/146], Loss: 0.1707
+Epoch [4/5], Steps [80/146], Loss: 0.1417
+Epoch [4/5], Steps [100/146], Loss: 0.2169
+Epoch [4/5], Steps [120/146], Loss: 0.1449
+Epoch [4/5], Steps [140/146], Loss: 0.2003
+Validation - Loss: 2.7810, IoU: 0.6075, Accuracy: 0.9916
+F1 Score: 0.6789, AUC: 0.9539, Dice: 0.6789
+Precision: 0.6766, Recall: 0.7053
+Saving model...
+Model has been saved!
+Epoch [5/5], Steps [0/146], Loss: 0.2145
+Epoch [5/5], Steps [20/146], Loss: 0.1774
+Epoch [5/5], Steps [40/146], Loss: 0.1887
+Epoch [5/5], Steps [60/146], Loss: 0.1491
+Epoch [5/5], Steps [80/146], Loss: 0.1340
+Epoch [5/5], Steps [100/146], Loss: 0.1634
+Epoch [5/5], Steps [120/146], Loss: 0.1508
+Epoch [5/5], Steps [140/146], Loss: 0.1626
+Validation - Loss: 2.3982, IoU: 0.5990, Accuracy: 0.9893
+F1 Score: 0.6680, AUC: 0.9572, Dice: 0.6680
+Precision: 0.6395, Recall: 0.7404
+Model is not being saved
+Training complete in: 0:02:55.666664
+Endtime: 2026-03-22 01:02:26.029004
+Best epoch: 3
+Best F1 score: 0.6788958311080933
