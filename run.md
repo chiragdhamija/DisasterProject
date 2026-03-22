@@ -16,6 +16,36 @@ Use the existing virtual env:
 source .venv/bin/activate
 ```
 
+## 1.1) Option A (Full-Year 2020 CA) quick scripts
+
+### A) Submit Earth Engine exports (monthly, CA-only, daily)
+
+```bash
+EE_PROJECT=disaster-490916 \
+bash NextDayWildFireSpr/tools/run_option_a_export_ca_2020.sh
+```
+
+After tasks finish, download all generated `train_*.tfrecord(.gz)`, `eval_*.tfrecord(.gz)`, `test_*.tfrecord(.gz)` files
+from Drive/GCS into:
+
+`NextDayWildFireSpr/data/ndws64_meta_ca`
+
+### B) Rebuild full local pipeline from downloaded files
+
+```bash
+bash NextDayWildFireSpr/tools/run_option_a_rebuild_pipeline.sh
+```
+
+Headless/background variant (recommended for long Step 2 so VS Code closing does not stop run):
+
+```bash
+nohup env STEP2_DATA_DTYPE=float16 STEP2_LABEL_DTYPE=uint8 PYTHONUNBUFFERED=1 \
+  bash NextDayWildFireSpr/tools/run_option_a_rebuild_pipeline.sh \
+  > option_a_rebuild.log 2>&1 &
+
+tail -f option_a_rebuild.log
+```
+
 ## 2) Required Inputs (Must Exist)
 
 ### 2.1 Core mapped NDWS data
@@ -68,7 +98,15 @@ If `ndws64_meta_ca` is already ready, skip this section.
   --output_dir NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard \
   --metadata_json NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/channels_metadata.json \
   --sample_index_csv NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/sample_index.csv \
-  --tile_size 64
+  --tile_size 64 \
+  --data_dtype float16 \
+  --label_dtype uint8
+```
+
+For live logs in non-interactive runs:
+
+```bash
+env PYTHONUNBUFFERED=1 .venv/bin/python -u NextDayWildFireSpr/tools/build_hazard_pickles.py ...
 ```
 
 ### Outputs
@@ -263,8 +301,12 @@ Open:
 API endpoints (served by same process):
 
 - `/api/meta`
-- `/api/window?date=YYYY-MM-DD&horizon=2`
+- `/api/window?date=YYYY-MM-DD&horizon=2` (uses next **available sampled dates**)
 - `/api/tract-risk?date=YYYY-MM-DD`
+
+Option B note:
+- Frontend base-date selector now lists only dates available in the dataset.
+- If dates are missing in the underlying sampled data, they will not appear in selector.
 
 Frontend files used:
 

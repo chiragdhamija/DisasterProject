@@ -8,6 +8,57 @@ Build a **hazard-first wildfire pipeline**:
 1. Train model only on wildfire/environmental + location/time inputs from mapped NDWS data.
 2. Keep exposure/vulnerability for post-model risk fusion (not hazard training input).
 
+## Option A (Full-Year Coverage) Update
+- Implemented Option A exporter changes in:
+  - `NextDayWildFireSpr/tools/ee_export_with_mapping.py`
+- Key fixes applied:
+  - Region control with default `--region ca` (California-only sampling).
+  - Daily split window default `--split_window_days 1` (no 8-day omission pattern).
+  - No-fire day retention via `--no_fire_samples_per_day`.
+  - More robust detection-count handling (`bestEffort`, fallback sampling on reduce errors).
+- Added runnable scripts:
+  - `NextDayWildFireSpr/tools/run_option_a_export_ca_2020.sh`
+  - `NextDayWildFireSpr/tools/run_option_a_rebuild_pipeline.sh`
+- Added runbook shortcuts in `run.md` for Option A export + full rebuild.
+
+## Step-2 Stability Fix (Full-Year 2020 Scale)
+- Observed failure mode on full-year manifest (`61,064` samples, `50,142` train): Step 2 could terminate mid-write with only partial outputs (for example `train.data` at `0` bytes) due high memory pressure.
+- Implemented low-memory rebuild changes:
+  - `NextDayWildFireSpr/tools/build_hazard_pickles.py`
+    - Processes splits sequentially (`train` then `validation` then `test`) instead of holding all splits in RAM.
+    - Added storage dtype controls: `--data_dtype` (`float32|float16`) and `--label_dtype` (`float32|float16|uint8`).
+    - Defaulted to `float16` features + `uint8` labels to reduce peak memory.
+    - Added per-split allocation logging and atomic temp-file writes (`*.tmp -> final`).
+  - `NextDayWildFireSpr/tools/infer_hazard_scores.py`
+    - Reduced peak RAM by casting to `float32` per batch during inference (instead of full split copy).
+  - `NextDayWildFireSpr/trainModel-II.py`
+    - Explicitly casts input tensors to `float32` before forward pass so training remains stable with float16-stored pickles.
+  - `NextDayWildFireSpr/tools/run_option_a_rebuild_pipeline.sh`
+    - Exposes `STEP2_DATA_DTYPE` and `STEP2_LABEL_DTYPE` env controls (defaults: `float16`, `uint8`).
+- Smoke validation completed on a subset (`3040` samples): pickles + metadata + index all generated correctly with zero parse/integrity errors.
+
+## Training Throughput Controls (Implemented)
+- Added fast-mode controls for large full-year training in:
+  - `NextDayWildFireSpr/trainModel-II.py`
+  - `NextDayWildFireSpr/datasets.py`
+- New CLI options:
+  - `--rotation_factor` (`1..4`) to control 4x rotation expansion.
+  - `--max_train_samples` to cap base train samples before rotation.
+  - `--max_val_samples` to cap validation samples.
+  - `--amp` for CUDA mixed precision speedup.
+- Dataset internals updated:
+  - Optional deterministic subsampling of `good_indices`.
+  - Rotation pipeline now supports reduced rotation sets; `rotation_factor=1` disables extra rotations.
+- Smoke test passed with fast settings (`rotation_factor=1`, capped train/val):
+  - Training started immediately and completed 1 epoch successfully.
+
+## Metric Stability / Imbalance Note
+- Verified severe class imbalance in full-year canonical labels:
+  - train fire-pixel fraction: `0.002628` (~`0.26%`)
+  - validation fire-pixel fraction: `0.003970`
+  - test fire-pixel fraction: `0.004164`
+- Patched `NextDayWildFireSpr/metrics.py` (`mean_iou`) to avoid `NaN` when a class union is zero in a batch (returns stable value instead of dividing by zero).
+
 ## Canonical Implemented Pipeline
 
 ### 1) CA Mapped Dataset Preparation
@@ -262,3 +313,8 @@ Build a **hazard-first wildfire pipeline**:
   - Frontend now uses a **calendar base date (`t`)** and loads only `t..t+2` window from backend.
 - Result:
   - Total frontend data footprint reduced and initial render path is faster.
+
+### E) Option-B Date Mapping (Implemented)
+- Frontend now uses only dataset-available dates for base-date selection.
+- `/api/window` now returns `t, t+1, t+2` as next available sampled dates (not missing calendar dates).
+- This prevents empty-map confusion on missing dates (for example unavailable 2020-09-09 samples).

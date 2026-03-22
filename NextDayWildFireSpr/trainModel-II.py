@@ -67,6 +67,18 @@ def main():
                         help='Number of bad epochs before LR reduction')
     parser.add_argument('--random_flip', action='store_true',
                         help='Enable random H/V flips in training augmentation')
+    parser.add_argument('--rotation_factor', default=4, type=int,
+                        help='How many rotation variants per sample (1,2,3,4)')
+    parser.add_argument('--max_train_samples', default=0, type=int,
+                        help='Cap training base samples before rotation (0 = all)')
+    parser.add_argument('--max_val_samples', default=0, type=int,
+                        help='Cap validation samples (0 = all)')
+    parser.add_argument('--amp', action='store_true',
+                        help='Enable mixed precision training on CUDA')
+    parser.add_argument('--batch_size', default=64, type=int,
+                        help='Batch size for train/validation loaders')
+    parser.add_argument('--num_workers', default=0, type=int,
+                        help='DataLoader workers')
     args = parser.parse_args()
     print(f'initializing training on single GPU')
     train(0, args)
@@ -97,8 +109,22 @@ def _load_channel_names(channels_metadata, num_input_channels):
     return fallback
 
 
-def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=None, random_flip=False):
-    batch_size = 64
+def create_data_loaders(
+    rank,
+    gpu,
+    world_size,
+    dataset_path,
+    channels_metadata=None,
+    random_flip=False,
+    rotation_factor=4,
+    max_train_samples=0,
+    max_val_samples=0,
+    batch_size=64,
+    num_workers=0,
+):
+    batch_size = max(1, int(batch_size))
+    num_workers = max(0, int(num_workers))
+    pin_memory = torch.cuda.is_available()
 
     datasets = {
         TRAIN: RotatedWildfireDataset(
@@ -107,12 +133,15 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
             features=None,
             crop_size=64,
             random_flip=random_flip,
+            rotation_factor=rotation_factor,
+            max_samples=max_train_samples,
         ),
         VAL: WildfireDataset(
             f"{dataset_path}/{VAL}.data",
             f"{dataset_path}/{VAL}.labels",
             features=None,
-            crop_size=64
+            crop_size=64,
+            max_samples=max_val_samples,
         )
     }
 
@@ -120,16 +149,16 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
         TRAIN: torch.utils.data.DataLoader(
             dataset=datasets[TRAIN],
             batch_size=batch_size,
-            shuffle=True,  
-            num_workers=0,
-            pin_memory=True,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
         ),
         VAL: torch.utils.data.DataLoader(
             dataset=datasets[VAL],
             batch_size=batch_size,
             shuffle=False,
-            num_workers=0,
-            pin_memory=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
         )
     }
 
@@ -139,10 +168,12 @@ def create_data_loaders(rank, gpu, world_size, dataset_path, channels_metadata=N
     print(list(zip(channel_names, range(num_input_channels))))
     print(f"dataset_path={dataset_path}")
     print(f"num_input_channels={num_input_channels}")
+    print(f"batch_size={batch_size}, num_workers={num_workers}, pin_memory={pin_memory}")
+    print(f"train_len={len(datasets[TRAIN])}, val_len={len(datasets[VAL])}")
 
     return dataLoaders, num_input_channels
 
-def perform_validation(model, loader, device):
+def perform_validation(model, loader, device, use_amp=False):
     model.eval()
 
     total_loss = 0
@@ -157,12 +188,12 @@ def perform_validation(model, loader, device):
 
     with torch.no_grad():
         for i, (images, labels) in enumerate(loader):
-            images = images.to(device, non_blocking=torch.cuda.is_available())
-            labels = labels.to(device, non_blocking=torch.cuda.is_available())
-
+            images = images.to(device, non_blocking=torch.cuda.is_available()).float()
+            labels = labels.to(device, non_blocking=torch.cuda.is_available()).float()
 
              # Forward pass
-            outputs = model(images)
+            with torch.autocast(device_type="cuda", enabled=use_amp):
+                outputs = model(images)
 
             labels = torch.flatten(labels)
             outputs = torch.flatten(outputs)
@@ -211,12 +242,18 @@ def train(gpu, args):
         dataset_path=args.dataset_path,
         channels_metadata=args.channels_metadata,
         random_flip=args.random_flip,
+        rotation_factor=args.rotation_factor,
+        max_train_samples=args.max_train_samples,
+        max_val_samples=args.max_val_samples,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
     )
 
     torch.manual_seed(0)
 
     model = U_Net(num_input_channels, 1)
     use_cuda = torch.cuda.is_available()
+    use_amp = bool(args.amp and use_cuda)
     if use_cuda:
         torch.cuda.set_device(gpu)
         device = torch.device(f"cuda:{gpu}")
@@ -241,10 +278,16 @@ def train(gpu, args):
         threshold=args.min_delta,
         min_lr=1e-6,
     )
+    try:
+        scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+    except Exception:
+        scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     start = datetime.now()
     print(f'TRAINING ON: {platform.node()}, Starting at: {datetime.now()}')
     print(f"random_flip={args.random_flip}")
+    print(f"rotation_factor={max(1, min(4, int(args.rotation_factor)))}, max_train_samples={args.max_train_samples}, max_val_samples={args.max_val_samples}")
+    print(f"amp={use_amp}")
 
     total_step = len(dataLoaders[TRAIN])
     best_epoch = 0
@@ -260,11 +303,12 @@ def train(gpu, args):
         loss_train = 0
 
         for i, (images, labels) in enumerate(dataLoaders[TRAIN]):
-            images = images.to(device, non_blocking=torch.cuda.is_available())
+            images = images.to(device, non_blocking=torch.cuda.is_available()).float()
             labels = labels.to(device, non_blocking=torch.cuda.is_available()).float()
 
             # Forward pass
-            outputs = model(images)
+            with torch.autocast(device_type="cuda", enabled=use_amp):
+                outputs = model(images)
 
 
             # Not entirely sure if this flattening is required or not
@@ -278,11 +322,19 @@ def train(gpu, args):
 
 
             # Backward and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            if args.grad_clip > 0:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
-            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            if use_amp:
+                scaler.scale(loss).backward()
+                if args.grad_clip > 0:
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                if args.grad_clip > 0:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=args.grad_clip)
+                optimizer.step()
 
             if i % 20 == 0:
                 print('Epoch [{}/{}], Steps [{}/{}], Loss: {:.4f}'.format(
@@ -296,7 +348,7 @@ def train(gpu, args):
         train_loss_history.append(loss_train / len(dataLoaders[TRAIN]))
 
         if validate:
-            metrics = perform_validation(model, dataLoaders[VAL], device)
+            metrics = perform_validation(model, dataLoaders[VAL], device, use_amp=use_amp)
             val_metrics_history.append(metrics)
 
             curr_avg_loss_val, _, _, curr_f1_score, _, _, _, _ = metrics

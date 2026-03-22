@@ -45,13 +45,37 @@ def find_good_samples(labels, crop_map, crop_size):
     return np.array(good_indices)
 
 
+def maybe_subsample_indices(indices, max_samples=0, seed=42):
+    if max_samples is None:
+        return indices
+    max_samples = int(max_samples)
+    if max_samples <= 0 or max_samples >= len(indices):
+        return indices
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(indices, size=max_samples, replace=False)
+    return np.sort(picked)
+
+
 class WildfireDataset(torch.utils.data.Dataset):
-    def __init__(self, data_filename, labels_filename, features=None, crop_size=64):
+    def __init__(
+        self,
+        data_filename,
+        labels_filename,
+        features=None,
+        crop_size=64,
+        max_samples=0,
+        sample_seed=42,
+    ):
         self.data, self.labels = unpickle(data_filename), unpickle(labels_filename)
         self.crop_size = crop_size
 
         random.seed(1)
         self.crop_map, self.good_indices = new_random_crop(self.labels, self.crop_size)
+        self.good_indices = maybe_subsample_indices(
+            self.good_indices,
+            max_samples=max_samples,
+            seed=sample_seed,
+        )
 
         if features:
             assert isinstance(features, list)
@@ -86,13 +110,31 @@ class WildfireDataset(torch.utils.data.Dataset):
 
 class RotatedWildfireDataset(torch.utils.data.Dataset):
     # This dataset probably doesn't work if you use the wind direction feature
-    def __init__(self, data_filename, labels_filename, features=None, crop_size=64, random_flip=False):
+    def __init__(
+        self,
+        data_filename,
+        labels_filename,
+        features=None,
+        crop_size=64,
+        random_flip=False,
+        rotation_factor=4,
+        max_samples=0,
+        sample_seed=42,
+    ):
         self.data, self.labels = unpickle(data_filename), unpickle(labels_filename)
         self.crop_size = crop_size
         self.random_flip = random_flip
+        rotation_factor = max(1, min(4, int(rotation_factor)))
+        rotation_options = [0, 90, 180, 270]
+        self.rotation_angles = rotation_options[:rotation_factor]
 
         random.seed(1)
         self.crop_map, self.good_indices = new_random_crop(self.labels, self.crop_size)
+        self.good_indices = maybe_subsample_indices(
+            self.good_indices,
+            max_samples=max_samples,
+            seed=sample_seed,
+        )
         
         if features:
             assert isinstance(features, list)
@@ -105,10 +147,12 @@ class RotatedWildfireDataset(torch.utils.data.Dataset):
         print(f"crop_map size: {self.crop_map.nbytes}")
         print(f"good_indices size: {self.good_indices.nbytes}")
         print(f"total size: {self.data.nbytes + self.labels.nbytes + self.crop_map.nbytes + self.good_indices.nbytes}")
+        print(f"rotation_factor: {len(self.rotation_angles)}")
+        print(f"effective_train_samples_per_epoch: {len(self.good_indices) * len(self.rotation_angles)}")
         print("finished initializing RotatedWildfireDataset")
 
     def __len__(self):
-        return len(self.good_indices) * 4
+        return len(self.good_indices) * len(self.rotation_angles)
 
     def __getitem__(self, index):
         rotation_index = index // len(self.good_indices)
@@ -123,10 +167,12 @@ class RotatedWildfireDataset(torch.utils.data.Dataset):
             cropped_features = cropped_features[self.features, :, :]
 
         # Perform rotation
-        rotations = [0, 90, 180, 270]
-        rotation = rotations[rotation_index]
-        cropped_features = torchvision.transforms.functional.rotate(torch.from_numpy(cropped_features), rotation)
-        cropped_label = torchvision.transforms.functional.rotate(torch.from_numpy(np.expand_dims(cropped_label, axis=0)), rotation)
+        rotation = self.rotation_angles[rotation_index % len(self.rotation_angles)]
+        cropped_features = torch.from_numpy(cropped_features)
+        cropped_label = torch.from_numpy(np.expand_dims(cropped_label, axis=0))
+        if rotation != 0:
+            cropped_features = torchvision.transforms.functional.rotate(cropped_features, rotation)
+            cropped_label = torchvision.transforms.functional.rotate(cropped_label, rotation)
 
         if self.random_flip:
             if random.random() < 0.5:

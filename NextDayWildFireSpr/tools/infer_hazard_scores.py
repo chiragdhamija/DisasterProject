@@ -140,8 +140,8 @@ def run_inference(
             print(f"[WARN] Missing split files for {out_split}; skipping")
             continue
 
-        x = _load_pickle(data_path).astype(np.float32, copy=False)
-        y = _load_pickle(labels_path).astype(np.float32, copy=False)
+        x = _load_pickle(data_path)
+        y = _load_pickle(labels_path)
         if x.ndim != 4:
             print(f"[ERROR] Invalid data shape for {out_split}: {x.shape}")
             return 2
@@ -170,8 +170,9 @@ def run_inference(
 
         with torch.no_grad():
             for i0, i1 in _iter_batches(n, batch_size):
-                xb = torch.from_numpy(x[i0:i1]).to(device)
-                yb = torch.from_numpy(y[i0:i1]).to(device)
+                # Keep peak RAM low by casting per batch, not whole split.
+                xb = torch.from_numpy(np.asarray(x[i0:i1], dtype=np.float32)).to(device)
+                yb = torch.from_numpy(np.asarray(y[i0:i1], dtype=np.float32)).to(device)
 
                 logits = model(xb).squeeze(1)
                 probs = torch.sigmoid(logits)

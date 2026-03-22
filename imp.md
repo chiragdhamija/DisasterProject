@@ -154,3 +154,62 @@ cd NextDayWildFireSpr
 ```
 
 Next phase ready: I can now build the minimal frontend to visualize California sample/tract risk maps from these CSV outputs.
+
+
+
+
+
+Exactly. You are right.
+
+With your current full-year dataset, fire pixels are very rare:
+
+- `train fire fraction ≈ 0.2628%`
+- `validation fire fraction ≈ 0.3970%`
+- `test fire fraction ≈ 0.4164%`
+
+So a trivial “always no-fire” model already gets about:
+
+- `99.74%` train accuracy
+- `99.60%` validation accuracy
+- `99.58%` test accuracy
+
+So `accuracy` is not useful here.
+
+What matters:
+1. `class-1 (fire) F1`
+2. `class-1 IoU`
+3. `class-1 recall`
+4. `PR-AUC` (better than ROC-AUC for imbalance)
+
+Your reported `F1 ~0.5209` is macro-like (includes class 0), so it can still look decent while fire-class performance is weak.
+
+Most important fixes:
+1. Increase `--pos_weight` (current `4` is too low for this imbalance).
+2. Keep full dataset, but optimize for fire-class metrics.
+3. Tune threshold on validation (don’t lock at `0.5`).
+
+If you want, next full-dataset run with same setup but stronger imbalance handling:
+
+```bash
+python trainModel-II.py \
+  --epochs 6 \
+  --batch_size 32 \
+  --num_workers 0 \
+  --rotation_factor 1 \
+  --max_train_samples 0 \
+  --max_val_samples 0 \
+  --amp \
+  --dataset_path data/next-day-wildfire-spread-ca-hazard \
+  --channels_metadata data/next-day-wildfire-spread-ca-hazard/channels_metadata.json \
+  --learning_rate 7e-4 \
+  --weight_decay 1e-4 \
+  --pos_weight 20 \
+  --grad_clip 1.0 \
+  --lr_factor 0.6 \
+  --lr_patience 2 \
+  --early_stop_patience 4 \
+  --min_delta 0.0005 \
+  2>&1 | tee train_hazard_option_a_full_pos20.log
+```
+
+I can also patch training logs to print explicit fire-class-only metrics every epoch so we stop relying on misleading accuracy/macro-only numbers.

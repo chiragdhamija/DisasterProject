@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import gc
 import json
 import pickle
 from pathlib import Path
@@ -172,6 +173,8 @@ def build_dataset(
     metadata_json: Path,
     sample_index_csv: Path,
     tile_size: int,
+    data_dtype: str,
+    label_dtype: str,
 ) -> int:
     if tf is None:
         print("[ERROR] Missing dependency: tensorflow")
@@ -194,99 +197,149 @@ def build_dataset(
         for in_split, out_split in SPLIT_TO_OUTPUT.items()
     }
 
-    features = {
-        split: np.zeros((split_counts[split], num_channels, tile_size, tile_size), dtype=np.float32)
-        for split in ("train", "validation", "test")
+    dtype_map = {
+        "float32": np.float32,
+        "float16": np.float16,
+        "uint8": np.uint8,
     }
-    labels = {
-        split: np.zeros((split_counts[split], tile_size, tile_size), dtype=np.float32)
-        for split in ("train", "validation", "test")
-    }
-    write_idx = {"train": 0, "validation": 0, "test": 0}
+    if data_dtype not in dtype_map:
+        raise ValueError(f"Unsupported data_dtype={data_dtype}")
+    if label_dtype not in dtype_map:
+        raise ValueError(f"Unsupported label_dtype={label_dtype}")
+
+    data_np_dtype = dtype_map[data_dtype]
+    label_np_dtype = dtype_map[label_dtype]
 
     sample_index_rows: list[dict[str, object]] = []
     missing_in_manifest = 0
     parse_errors = 0
-
-    for in_split, out_split in SPLIT_TO_OUTPUT.items():
-        files = _iter_split_files(tfrecord_dir, in_split)
-        if not files:
-            print(f"[WARN] No TFRecord files found for split={in_split}")
-            continue
-
-        for in_file in files:
-            ds = tf.data.TFRecordDataset(str(in_file), compression_type=_compression_for(in_file))
-            for record_index, raw_record in enumerate(ds):
-                sample_id = f"{in_split}_{in_file.stem}_{record_index:08d}"
-                if sample_id not in manifest.index:
-                    missing_in_manifest += 1
-                    continue
-
-                row = manifest.loc[sample_id]
-                try:
-                    ex = tf.train.Example()
-                    ex.ParseFromString(bytes(raw_record.numpy()))
-
-                    base_stack: list[np.ndarray] = []
-                    for key in BASE_CHANNELS:
-                        arr = _read_array_feature(ex, key, tile_size)
-                        if key == "PrevFireMask":
-                            arr = _to_binary_fire_mask(arr)
-                        base_stack.append(arr)
-
-                    lon_channel = np.full((tile_size, tile_size), float(row["meta_lon_z"]), dtype=np.float32)
-                    lat_channel = np.full((tile_size, tile_size), float(row["meta_lat_z"]), dtype=np.float32)
-                    doy_channel = np.full((tile_size, tile_size), float(row["meta_day_of_year_z"]), dtype=np.float32)
-
-                    x = np.stack(base_stack + [lon_channel, lat_channel, doy_channel], axis=0).astype(np.float32)
-                    y = _to_binary_fire_mask(_read_array_feature(ex, LABEL_KEY, tile_size)).astype(np.float32)
-                except Exception:
-                    parse_errors += 1
-                    continue
-
-                i = write_idx[out_split]
-                if i >= features[out_split].shape[0]:
-                    continue
-                features[out_split][i] = x
-                labels[out_split][i] = y
-                write_idx[out_split] += 1
-
-                sample_index_rows.append(
-                    {
-                        "output_split": out_split,
-                        "split": row["split"],
-                        "array_index": i,
-                        "sample_id": row["sample_id"],
-                        "sample_date": row["sample_date"],
-                        "sample_lon": float(row["sample_lon"]),
-                        "sample_lat": float(row["sample_lat"]),
-                        "meta_day_of_year": int(row["meta_day_of_year"]),
-                        "source_file": row["source_file"],
-                        "record_index": int(row["record_index"]),
-                    }
-                )
-
-    # Trim by actual written row counts.
-    for split in ("train", "validation", "test"):
-        features[split] = features[split][: write_idx[split]]
-        labels[split] = labels[split][: write_idx[split]]
+    split_shapes: dict[str, dict[str, list[int]]] = {}
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with (output_dir / "train.data").open("wb") as f:
-        pickle.dump(features["train"], f)
-    with (output_dir / "train.labels").open("wb") as f:
-        pickle.dump(labels["train"], f)
+    for in_split, out_split in SPLIT_TO_OUTPUT.items():
+        split_count = split_counts[out_split]
+        features_split = np.zeros(
+            (split_count, num_channels, tile_size, tile_size), dtype=data_np_dtype
+        )
+        labels_split = np.zeros((split_count, tile_size, tile_size), dtype=label_np_dtype)
+        write_idx = 0
 
-    with (output_dir / "validation.data").open("wb") as f:
-        pickle.dump(features["validation"], f)
-    with (output_dir / "validation.labels").open("wb") as f:
-        pickle.dump(labels["validation"], f)
+        files = _iter_split_files(tfrecord_dir, in_split)
+        if not files:
+            print(f"[WARN] No TFRecord files found for split={in_split}")
+            split_shapes[out_split] = {
+                "data": [0, num_channels, tile_size, tile_size],
+                "labels": [0, tile_size, tile_size],
+            }
+        else:
+            print(f"[SPLIT] {in_split} -> {out_split}, files={len(files)}")
+            approx_gb = (
+                (split_count * num_channels * tile_size * tile_size * np.dtype(data_np_dtype).itemsize)
+                + (split_count * tile_size * tile_size * np.dtype(label_np_dtype).itemsize)
+            ) / 1_000_000_000
+            print(
+                f"[ALLOC] split={out_split} count={split_count} "
+                f"data_dtype={data_dtype} label_dtype={label_dtype} approx_ram_gb={approx_gb:.2f}"
+            )
 
-    with (output_dir / "test.data").open("wb") as f:
-        pickle.dump(features["test"], f)
-    with (output_dir / "test.labels").open("wb") as f:
-        pickle.dump(labels["test"], f)
+            for in_file in files:
+                print(f"[READ] split={in_split} file={in_file.name}")
+                ds = tf.data.TFRecordDataset(str(in_file), compression_type=_compression_for(in_file))
+                records_seen = 0
+                written_before = write_idx
+                for record_index, raw_record in enumerate(ds):
+                    records_seen += 1
+                    sample_id = f"{in_split}_{in_file.stem}_{record_index:08d}"
+                    if sample_id not in manifest.index:
+                        missing_in_manifest += 1
+                        continue
+
+                    row = manifest.loc[sample_id]
+                    try:
+                        ex = tf.train.Example()
+                        ex.ParseFromString(bytes(raw_record.numpy()))
+
+                        base_stack: list[np.ndarray] = []
+                        for key in BASE_CHANNELS:
+                            arr = _read_array_feature(ex, key, tile_size)
+                            if key == "PrevFireMask":
+                                arr = _to_binary_fire_mask(arr)
+                            base_stack.append(arr)
+
+                        lon_channel = np.full((tile_size, tile_size), float(row["meta_lon_z"]), dtype=np.float32)
+                        lat_channel = np.full((tile_size, tile_size), float(row["meta_lat_z"]), dtype=np.float32)
+                        doy_channel = np.full((tile_size, tile_size), float(row["meta_day_of_year_z"]), dtype=np.float32)
+
+                        x = np.stack(base_stack + [lon_channel, lat_channel, doy_channel], axis=0)
+                        x = x.astype(data_np_dtype, copy=False)
+
+                        y_bin = _to_binary_fire_mask(_read_array_feature(ex, LABEL_KEY, tile_size)).astype(
+                            np.float32
+                        )
+                        if label_np_dtype == np.uint8:
+                            y = (y_bin > 0.5).astype(np.uint8, copy=False)
+                        else:
+                            y = y_bin.astype(label_np_dtype, copy=False)
+                    except Exception:
+                        parse_errors += 1
+                        continue
+
+                    i = write_idx
+                    if i >= features_split.shape[0]:
+                        continue
+                    features_split[i] = x
+                    labels_split[i] = y
+                    write_idx += 1
+
+                    sample_index_rows.append(
+                        {
+                            "output_split": out_split,
+                            "split": row["split"],
+                            "array_index": i,
+                            "sample_id": row["sample_id"],
+                            "sample_date": row["sample_date"],
+                            "sample_lon": float(row["sample_lon"]),
+                            "sample_lat": float(row["sample_lat"]),
+                            "meta_day_of_year": int(row["meta_day_of_year"]),
+                            "source_file": row["source_file"],
+                            "record_index": int(row["record_index"]),
+                        }
+                    )
+
+                written_file = write_idx - written_before
+                print(
+                    f"[FILE DONE] split={in_split} file={in_file.name} "
+                    f"records_seen={records_seen} written={written_file}"
+                )
+
+        features_split = features_split[:write_idx]
+        labels_split = labels_split[:write_idx]
+        split_shapes[out_split] = {
+            "data": list(features_split.shape),
+            "labels": list(labels_split.shape),
+        }
+
+        data_path = output_dir / f"{out_split}.data"
+        labels_path = output_dir / f"{out_split}.labels"
+        data_tmp = output_dir / f"{out_split}.data.tmp"
+        labels_tmp = output_dir / f"{out_split}.labels.tmp"
+
+        with data_tmp.open("wb") as f:
+            pickle.dump(features_split, f, protocol=pickle.HIGHEST_PROTOCOL)
+        data_tmp.replace(data_path)
+
+        with labels_tmp.open("wb") as f:
+            pickle.dump(labels_split, f, protocol=pickle.HIGHEST_PROTOCOL)
+        labels_tmp.replace(labels_path)
+
+        print(
+            f"[SPLIT DONE] {out_split}: data={features_split.shape} labels={labels_split.shape} "
+            f"-> {data_path.name}, {labels_path.name}"
+        )
+        del features_split
+        del labels_split
+        gc.collect()
 
     with sample_index_csv.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
@@ -317,14 +370,10 @@ def build_dataset(
         "num_channels": num_channels,
         "base_channels": BASE_CHANNELS,
         "meta_channels": META_CHANNELS,
+        "data_dtype": data_dtype,
+        "label_dtype": label_dtype,
         "meta_normalization": meta_stats,
-        "split_shapes": {
-            split: {
-                "data": list(features[split].shape),
-                "labels": list(labels[split].shape),
-            }
-            for split in ("train", "validation", "test")
-        },
+        "split_shapes": split_shapes,
         "integrity": {
             "missing_in_manifest": missing_in_manifest,
             "parse_errors": parse_errors,
@@ -338,7 +387,8 @@ def build_dataset(
     print(f"[DONE] Wrote channels metadata: {metadata_json}")
     print(f"[DONE] Wrote sample index mapping: {sample_index_csv}")
     for split in ("train", "validation", "test"):
-        print(f"[INFO] {split}: data={features[split].shape}, labels={labels[split].shape}")
+        shapes = split_shapes.get(split, {"data": [0], "labels": [0]})
+        print(f"[INFO] {split}: data={tuple(shapes['data'])}, labels={tuple(shapes['labels'])}")
     print(
         "[INFO] integrity:"
         f" missing_in_manifest={missing_in_manifest},"
@@ -356,6 +406,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--metadata_json", type=Path, default=DEFAULT_METADATA_JSON)
     parser.add_argument("--sample_index_csv", type=Path, default=DEFAULT_SAMPLE_INDEX_CSV)
     parser.add_argument("--tile_size", type=int, default=64)
+    parser.add_argument(
+        "--data_dtype",
+        choices=["float32", "float16"],
+        default="float16",
+        help="Storage dtype for feature tensors.",
+    )
+    parser.add_argument(
+        "--label_dtype",
+        choices=["float32", "float16", "uint8"],
+        default="uint8",
+        help="Storage dtype for label tensors (recommended: uint8).",
+    )
     return parser
 
 
@@ -368,6 +430,8 @@ def main() -> int:
         metadata_json=args.metadata_json,
         sample_index_csv=args.sample_index_csv,
         tile_size=args.tile_size,
+        data_dtype=args.data_dtype,
+        label_dtype=args.label_dtype,
     )
 
 

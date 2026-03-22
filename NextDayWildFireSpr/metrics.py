@@ -54,7 +54,9 @@ def mean_iou(gold_mask, pred_mask):
     intersection_0 = (gold_mask_masked * pred_mask_masked).sum()
     union_0 = gold_mask_masked.sum() + pred_mask_masked.sum() - intersection_0
 
-    return ((intersection / union) + (intersection_0 / union_0)) / 2
+    iou_1 = intersection / union if union.item() > 0 else torch.tensor(1.0, device=intersection.device)
+    iou_0 = intersection_0 / union_0 if union_0.item() > 0 else torch.tensor(1.0, device=intersection_0.device)
+    return (iou_1 + iou_0) / 2
 
 def accuracy(gold_mask, pred_mask):
     pred_mask_binary = (pred_mask > 0.).int()
