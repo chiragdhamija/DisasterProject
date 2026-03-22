@@ -133,6 +133,10 @@ button:hover {
   width: 100%;
 }
 
+.date-control select {
+  width: 100%;
+}
+
 .date-pill {
   margin-left: auto;
   padding: 7px 10px;

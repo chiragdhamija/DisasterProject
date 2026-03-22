@@ -39,7 +39,7 @@ const state = {
 };
 
 const ui = {
-  baseDateInput: document.getElementById("baseDateInput"),
+  baseDateSelect: document.getElementById("baseDateSelect"),
   viewMode: document.getElementById("viewMode"),
   playBtn: document.getElementById("playBtn"),
   speedSelect: document.getElementById("speedSelect"),
@@ -84,10 +84,8 @@ async function boot() {
       state.map.fitBounds(DEFAULT_BOUNDS, { padding: [10, 10] });
     }
 
-    ui.baseDateInput.min = meta.min_date || dates[0];
-    ui.baseDateInput.max = meta.max_date || dates[dates.length - 1];
-    const defaultDate = meta.default_date || dates[0];
-    ui.baseDateInput.value = defaultDate;
+    populateAvailableDateOptions(dates, meta.default_date || dates[0]);
+    const defaultDate = ui.baseDateSelect.value || dates[0];
 
     await loadBaseDateWindow(defaultDate, true);
   } catch (error) {
@@ -121,8 +119,8 @@ function initMap() {
 }
 
 function bindEvents() {
-  ui.baseDateInput.addEventListener("change", async () => {
-    const nextDate = ui.baseDateInput.value;
+  ui.baseDateSelect.addEventListener("change", async () => {
+    const nextDate = ui.baseDateSelect.value;
     if (!nextDate) {
       return;
     }
@@ -188,19 +186,11 @@ function bindEvents() {
 }
 
 async function loadBaseDateWindow(baseDate, panToDate) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(baseDate)) {
-    setStatus(`Invalid base date: ${baseDate}`, true);
+  if (!state.allDates.includes(baseDate)) {
+    setStatus(`Base date ${baseDate} is not in available dataset dates.`, true);
     return;
   }
-  if (ui.baseDateInput.min && baseDate < ui.baseDateInput.min) {
-    setStatus(`Base date is before available range.`, true);
-    return;
-  }
-  if (ui.baseDateInput.max && baseDate > ui.baseDateInput.max) {
-    setStatus(`Base date is after available range.`, true);
-    return;
-  }
-  setStatus(`Loading window for ${baseDate} (t..t+2) from backend API...`);
+  setStatus(`Loading available-date window for ${baseDate} (t..t+2 available dates) from backend API...`);
 
   let payload = state.windowCache.get(baseDate);
   if (!payload) {
@@ -236,7 +226,7 @@ async function loadBaseDateWindow(baseDate, panToDate) {
 
   state.pointBreaks = normalizeBreaks(payload.point_breaks || state.pointBreaks);
 
-  ui.baseDateInput.value = state.selectedBaseDate;
+  ui.baseDateSelect.value = state.selectedBaseDate;
   ui.dateSlider.min = "0";
   ui.dateSlider.max = String(Math.max(0, state.windowDates.length - 1));
   ui.dateSlider.value = "0";
@@ -594,6 +584,21 @@ function parseBounds(raw) {
     return null;
   }
   return b;
+}
+
+function populateAvailableDateOptions(dates, defaultDate) {
+  ui.baseDateSelect.innerHTML = "";
+  for (const d of dates) {
+    const opt = document.createElement("option");
+    opt.value = d;
+    opt.textContent = d;
+    ui.baseDateSelect.appendChild(opt);
+  }
+  if (dates.includes(defaultDate)) {
+    ui.baseDateSelect.value = defaultDate;
+  } else if (dates.length) {
+    ui.baseDateSelect.value = dates[0];
+  }
 }
 
 function setStatus(message, isError = false) {

@@ -7,7 +7,7 @@ import argparse
 import csv
 import json
 import math
-from datetime import date as date_cls, timedelta
+from bisect import bisect_left
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -153,13 +153,6 @@ class DataStore:
             self.min_date = self.dates[0]
             self.max_date = self.dates[-1]
 
-    def _is_valid_iso_date(self, value: str) -> bool:
-        try:
-            date_cls.fromisoformat(value)
-        except ValueError:
-            return False
-        return True
-
     def _load_tract_geometries(self) -> None:
         geojson = self._read_json(self.frontend_data_dir / "tract_risk.geojson")
         for feature in geojson.get("features", []):
@@ -220,12 +213,13 @@ class DataStore:
     def _resolve_date(self, raw_date: str | None) -> str:
         if not self.dates:
             return ""
-        if raw_date and self._is_valid_iso_date(raw_date):
-            if self.min_date is not None and raw_date < self.min_date:
-                return self.min_date
-            if self.max_date is not None and raw_date > self.max_date:
-                return self.max_date
+        if raw_date and raw_date in self.date_to_index:
             return raw_date
+        if raw_date:
+            idx = bisect_left(self.dates, raw_date)
+            if idx >= len(self.dates):
+                return self.dates[-1]
+            return self.dates[idx]
         return self.dates[0]
 
     def get_meta(self) -> dict[str, object]:
@@ -253,13 +247,12 @@ class DataStore:
             except ValueError:
                 horizon = self.horizon_default
 
-        base_dt = date_cls.fromisoformat(date_key)
-        window_dates = []
-        for i in range(horizon + 1):
-            d = (base_dt + timedelta(days=i)).isoformat()
-            if self.max_date is not None and d > self.max_date:
-                break
-            window_dates.append(d)
+        # Option B behavior: window follows next available sampled dates.
+        if date_key in self.date_to_index:
+            idx = self.date_to_index[date_key]
+        else:
+            idx = 0
+        window_dates = self.dates[idx : idx + horizon + 1]
         points_by_date = {d: self.points_by_date.get(d, []) for d in window_dates}
         centroids = [self.centroids_by_date[d] for d in window_dates if d in self.centroids_by_date]
         daily_rows = [self.daily_by_date.get(d, {"sample_date": d}) for d in window_dates]
@@ -363,7 +356,10 @@ def main() -> int:
 
     with ThreadingHTTPServer((args.host, args.port), handler) as server:
         print(f"[SERVE] http://{args.host}:{args.port}")
-        print("[SERVE] Endpoints: /api/meta, /api/window?date=YYYY-MM-DD&horizon=2, /api/tract-risk?date=YYYY-MM-DD")
+        print(
+            "[SERVE] Endpoints: /api/meta, /api/window?date=YYYY-MM-DD&horizon=2 "
+            "(next AVAILABLE dates), /api/tract-risk?date=YYYY-MM-DD"
+        )
         server.serve_forever()
     return 0
 
