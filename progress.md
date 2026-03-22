@@ -253,5 +253,12 @@ Build a **hazard-first wildfire pipeline**:
   - Tract risk layer is lazy-loaded only when user switches to `Tract Risk Map`.
   - Map extent is now constrained to California bounds only.
   - Default tract geometry simplification increased to `0.001` in asset builder.
+  - Added local backend API server:
+    - `NextDayWildFireSpr/tools/serve_frontend_api.py`
+    - Serves static frontend plus endpoints:
+      - `/api/meta`
+      - `/api/window?date=YYYY-MM-DD&horizon=2`
+      - `/api/tract-risk?date=YYYY-MM-DD`
+  - Frontend now uses a **calendar base date (`t`)** and loads only `t..t+2` window from backend.
 - Result:
   - Total frontend data footprint reduced and initial render path is faster.

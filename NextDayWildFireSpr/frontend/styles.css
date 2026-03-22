@@ -125,6 +125,14 @@ button:hover {
   width: 110px;
 }
 
+.date-control {
+  min-width: 180px;
+}
+
+.date-control input[type="date"] {
+  width: 100%;
+}
+
 .date-pill {
   margin-left: auto;
   padding: 7px 10px;
@@ -242,4 +250,3 @@ button:hover {
     min-height: 530px;
   }
 }
-

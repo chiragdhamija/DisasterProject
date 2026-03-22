@@ -250,13 +250,21 @@ Notes:
 ### Command
 
 ```bash
-cd NextDayWildFireSpr/frontend
-python3 -m http.server 8080
+.venv/bin/python NextDayWildFireSpr/tools/serve_frontend_api.py \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --horizon_default 2
 ```
 
 Open:
 
 - `http://localhost:8080`
+
+API endpoints (served by same process):
+
+- `/api/meta`
+- `/api/window?date=YYYY-MM-DD&horizon=2`
+- `/api/tract-risk?date=YYYY-MM-DD`
 
 Frontend files used:
 
