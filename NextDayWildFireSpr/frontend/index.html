@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>California Wildfire Hazard and Risk Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Serif+4:opsz,wght@8..60,600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar panel">
+        <div>
+          <p class="kicker">Wildfire Decision Support</p>
+          <h1>California Predicted Spread, Trajectory, and Risk</h1>
+          <p class="subtitle">
+            Risk model: <strong>R = Hazard × Exposure × Vulnerability</strong>
+          </p>
+        </div>
+        <div class="mode-control">
+          <label for="viewMode">Map View</label>
+          <select id="viewMode">
+            <option value="spread">Daily Spread + Trajectory</option>
+            <option value="risk">Tract Risk Map</option>
+          </select>
+        </div>
+      </header>
+
+      <section class="controls panel">
+        <div class="control-row">
+          <button id="playBtn" type="button">Play</button>
+          <label for="speedSelect">Speed</label>
+          <select id="speedSelect">
+            <option value="1200">Slow</option>
+            <option value="800" selected>Normal</option>
+            <option value="450">Fast</option>
+          </select>
+          <span id="dateLabel" class="date-pill">Date: -</span>
+        </div>
+        <input id="dateSlider" type="range" min="0" max="0" value="0" />
+        <p id="statusText" class="status-text">Loading data...</p>
+      </section>
+
+      <main class="main-grid">
+        <section class="map-wrap panel reveal">
+          <div id="map"></div>
+          <div id="mapLegend" class="legend"></div>
+        </section>
+
+        <aside class="side-wrap panel reveal">
+          <h2>Daily Snapshot</h2>
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>Samples</span>
+              <strong id="metricSamples">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Mean Hazard</span>
+              <strong id="metricHazard">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>Mean Risk (HEV)</span>
+              <strong id="metricRisk">-</strong>
+            </article>
+            <article class="metric-card">
+              <span>EAL (USD/day)</span>
+              <strong id="metricEal">-</strong>
+            </article>
+          </div>
+          <h2>Risk Across Days</h2>
+          <canvas id="riskChart" height="220"></canvas>
+          <p class="footnote">
+            Point map shows predicted spread samples for the selected day.
+            Trajectory is the weighted centroid path by day.
+          </p>
+        </aside>
+      </main>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

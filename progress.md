@@ -205,3 +205,53 @@ Build a **hazard-first wildfire pipeline**:
 1. Build minimal frontend for California risk map visualization (sample + tract layers).
 2. Add scenario analysis view (for example reduced vulnerability case and delta-EAL).
 3. Finalize report figures/tables from `sample_risk_scores`, `tract_risk_summary`, and `date_risk_summary`.
+
+## Phase 3 Implemented: Frontend Visualization
+
+### A) Frontend Asset Builder
+- Added/updated:
+  - `NextDayWildFireSpr/tools/build_frontend_assets.py`
+- Generated map-ready artifacts:
+  - `NextDayWildFireSpr/frontend/data/spread_points.geojson`
+  - `NextDayWildFireSpr/frontend/data/spread_trajectory.geojson`
+  - `NextDayWildFireSpr/frontend/data/daily_risk_summary.json`
+  - `NextDayWildFireSpr/frontend/data/tract_risk.geojson`
+  - `NextDayWildFireSpr/frontend/data/frontend_assets_summary.json`
+- Optimization applied:
+  - Tract layer now exports only tracts with risk values (`334` features).
+  - Geometry simplification supported via `--simplify_tolerance`; current run used `0.0002`.
+  - Tract GeoJSON reduced from ~`119MB` to ~`3.9MB`.
+
+### B) Frontend UI (Implemented)
+- Added:
+  - `NextDayWildFireSpr/frontend/index.html`
+  - `NextDayWildFireSpr/frontend/styles.css`
+  - `NextDayWildFireSpr/frontend/app.js`
+- UI capabilities:
+  - California map with **daily predicted spread points** (risk-colored).
+  - **Day slider + play/pause animation** to step through wildfire progression.
+  - **Spread trajectory** line/centroid progression across days.
+  - Switchable **tract risk choropleth** view.
+  - Daily KPI cards (`samples`, `hazard`, `risk`, `EAL`).
+  - Time-series chart for risk/hazard/EAL across dates.
+
+### C) Reproducibility Docs Updated
+- Updated:
+  - `run.md`
+- Added explicit commands for:
+  - frontend asset generation
+  - local frontend server startup
+
+### D) Frontend Performance Optimization (California-only)
+- Issue addressed:
+  - Browser lag/hang due to heavier frontend parsing and unrestricted map extent.
+- Changes implemented:
+  - Added compact backend assets:
+    - `frontend/data/spread_daily_compact.json`
+    - `frontend/data/spread_trajectory_compact.json`
+  - Frontend now uses compact spread/trajectory files instead of parsing full GeoJSON first.
+  - Tract risk layer is lazy-loaded only when user switches to `Tract Risk Map`.
+  - Map extent is now constrained to California bounds only.
+  - Default tract geometry simplification increased to `0.001` in asset builder.
+- Result:
+  - Total frontend data footprint reduced and initial render path is faster.
