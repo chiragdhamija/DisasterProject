@@ -1,0 +1,35 @@
+{
+  "inputs": {
+    "dataset_dir": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard",
+    "channels_metadata": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/channels_metadata.json",
+    "sample_index_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/sample_index.csv",
+    "weights_path": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/savedModels/model-U_Net-bestF1Score-Rank-0.weights",
+    "split": "validation",
+    "threshold": 0.5,
+    "batch_size": 32,
+    "device": "cpu"
+  },
+  "outputs": {
+    "predictions_csv": "data/interim/hazard_predictions_validation_smoke.csv",
+    "rows": 158,
+    "split_counts": {
+      "validation": 158
+    }
+  },
+  "hazard_distribution": {
+    "mean_of_mean_prob": 0.04853361410595759,
+    "p95_of_mean_prob": 0.09137878082692623,
+    "max_prob_observed": 0.7821713089942932,
+    "mean_pred_fire_frac": 0.01599584651898734
+  },
+  "pixel_metrics": {
+    "threshold": 0.5,
+    "precision": 0.22275888717156106,
+    "recall": 0.5078176613080819,
+    "f1": 0.30967568656415767,
+    "iou": 0.1832048939381902,
+    "accuracy": 0.9841138622428798,
+    "brier_score": 0.012624748711344561,
+    "pixel_count": 647168
+  }
+}

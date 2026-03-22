@@ -1,0 +1,83 @@
+{
+  "inputs": {
+    "dataset_dir": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard",
+    "channels_metadata": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/channels_metadata.json",
+    "sample_index_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/sample_index.csv",
+    "weights_path": "savedModels/model-U_Net-bestF1Score-Rank-0.weights",
+    "split": "all",
+    "threshold": 0.5,
+    "batch_size": 64,
+    "device": "cpu"
+  },
+  "outputs": {
+    "predictions_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/hazard_predictions.csv",
+    "rows": 2783,
+    "split_counts": {
+      "train": 2334,
+      "test": 291,
+      "validation": 158
+    }
+  },
+  "hazard_distribution": {
+    "mean_of_mean_prob": 0.11172715885155746,
+    "p95_of_mean_prob": 0.29237377643585205,
+    "max_prob_observed": 0.8730561137199402,
+    "mean_pred_fire_frac": 0.05162315354945203
+  },
+  "pixel_metrics": {
+    "threshold": 0.5,
+    "precision": 0.1553900768275213,
+    "recall": 0.4885269023437709,
+    "f1": 0.2357826718133975,
+    "iou": 0.13364718056349267,
+    "accuracy": 0.9480000645661157,
+    "brier_score": 0.039509932562425076,
+    "pixel_count": 11399168
+  },
+  "pixel_metrics_macro_like_training": {
+    "macro_precision": 0.573267205895499,
+    "macro_recall": 0.7220987883568689,
+    "macro_f1": 0.6044334934570589,
+    "macro_iou": 0.5406133713756833,
+    "class0_f1": 0.9730843151007202,
+    "class1_f1": 0.2357826718133975
+  },
+  "per_split_metrics": {
+    "train": {
+      "precision": 0.15678437955690444,
+      "recall": 0.49165630483539213,
+      "f1": 0.23775198121968114,
+      "iou": 0.1349140295156826,
+      "accuracy": 0.9432456728323158,
+      "macro_f1": 0.6041387677270776,
+      "macro_iou": 0.538826439334856,
+      "class0_f1": 0.9705255542344742,
+      "class1_f1": 0.23775198121968114,
+      "pixel_count": 9560064
+    },
+    "validation": {
+      "precision": 0.22275888717156106,
+      "recall": 0.5078176613080819,
+      "f1": 0.30967568656415767,
+      "iou": 0.1832048939381902,
+      "accuracy": 0.9841138622428798,
+      "macro_f1": 0.6508200793019718,
+      "macro_iou": 0.5836309740027861,
+      "class0_f1": 0.991964472039786,
+      "class1_f1": 0.30967568656415767,
+      "pixel_count": 647168
+    },
+    "test": {
+      "precision": 0.11763786908295579,
+      "recall": 0.42905982905982903,
+      "f1": 0.18464933791074056,
+      "iou": 0.10171552073483722,
+      "accuracy": 0.9665250483247423,
+      "macro_f1": 0.5837805375530535,
+      "macro_iou": 0.5340566002030956,
+      "class0_f1": 0.9829117371953664,
+      "class1_f1": 0.18464933791074056,
+      "pixel_count": 1191936
+    }
+  }
+}

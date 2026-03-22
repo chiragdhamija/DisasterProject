@@ -1,0 +1,18 @@
+{
+  "manifest": "NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv",
+  "tracts": "NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg",
+  "output_csv": "NextDayWildFireSpr/data/interim/sample_tract_join.csv",
+  "rows_total": 2783,
+  "rows_matched": 2783,
+  "rows_unmatched": 0,
+  "match_rate": 1.0,
+  "match_method_counts": {
+    "intersects": 2630,
+    "nearest": 153
+  },
+  "split_counts": {
+    "train": 2334,
+    "test": 291,
+    "eval": 158
+  }
+}

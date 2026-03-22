@@ -1,0 +1,26 @@
+{
+  "input": {
+    "sample_tract_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_tract_join.csv",
+    "roads": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg",
+    "fire": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg",
+    "acs_json": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/Ext_Datasets/acs_2020_exposure.json",
+    "svi_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/Ext_Datasets/SVI_2020_CaliforniaTract.csv"
+  },
+  "output_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_features_hev.csv",
+  "rows": 2783,
+  "split_counts": {
+    "train": 2334,
+    "test": 291,
+    "eval": 158
+  },
+  "null_rates": {
+    "geoid_missing": 0.0,
+    "acs_population_missing": 0.0,
+    "svi_rpl_themes_missing": 0.00035932446999640676,
+    "road_dist_missing": 0.0
+  },
+  "fire_history": {
+    "lookback_years": 5,
+    "buffer_m": 10000.0
+  }
+}
