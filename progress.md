@@ -8,6 +8,17 @@ Build a **hazard-first wildfire pipeline**:
 1. Train model only on wildfire/environmental + location/time inputs from mapped NDWS data.
 2. Keep exposure/vulnerability for post-model risk fusion (not hazard training input).
 
+## 2026-03-23 Frontend + API Update
+- Upgraded trajectory visualization from one daily weighted-centroid path to **multi-trajectory rendering**:
+  - `NextDayWildFireSpr/tools/build_frontend_assets.py` now emits `trajectories` in `spread_trajectory_compact.json` by:
+    - clustering same-day predicted points,
+    - linking clusters across adjacent days.
+  - `NextDayWildFireSpr/tools/serve_frontend_api.py` now serves these trajectories in `/api/window`.
+  - `NextDayWildFireSpr/frontend/app.js` now renders all returned trajectories for the selected window date.
+- Updated frontend metric wording for clarity:
+  - `Mean Risk (USD/day/sample)` = mean per-sample risk.
+  - `EAL Total (USD/day)` = summed expected loss across samples for that day.
+
 ## Option A (Full-Year Coverage) Update
 - Implemented Option A exporter changes in:
   - `NextDayWildFireSpr/tools/ee_export_with_mapping.py`

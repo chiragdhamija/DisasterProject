@@ -282,6 +282,9 @@ Notes:
 - Frontend now loads compact spread/trajectory JSON first.
 - Tract risk GeoJSON is loaded lazily only when `Tract Risk Map` is selected.
 - Map extent is restricted to California in frontend.
+- Trajectory payload now includes:
+  - legacy `centroids` (single weighted centroid path),
+  - `trajectories` (multi-track, cluster-linked paths) used by the UI.
 
 ## 12) Run frontend locally
 
@@ -322,3 +325,11 @@ Frontend files used:
   - `pixel_metrics` (class-1 positive-fire metrics)
   - `pixel_metrics_macro_like_training` (comparable to training-style reporting)
   - `per_split_metrics` (train/validation/test separately)
+- Daily Snapshot cards in frontend:
+  - `Samples`: number of sample tiles on that date (`date_risk_summary.samples`)
+  - `Mean Hazard`: mean `hazard_index` on that date
+  - `Mean Risk (USD/day/sample)`: mean per-sample `risk_score` on that date
+  - `EAL Total (USD/day)`: sum of `risk_eal_usd` on that date
+- Current risk fusion formula in code (`fuse_risk_scores.py`):
+  - `risk_score = hazard_index * asset_value_usd * vulnerability_for_risk`
+  - `risk_eal_usd = risk_score`

@@ -117,6 +117,147 @@ def _weighted_centroids(sample_df: pd.DataFrame, weight_col: str) -> pd.DataFram
     return pd.DataFrame(rows)
 
 
+def _coord_distance_deg(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
+    # Approximate lon scaling by latitude to keep cluster radius more consistent.
+    lat_mid = np.deg2rad((lat1 + lat2) / 2.0)
+    lon_scale = float(np.cos(lat_mid))
+    dx = (lon1 - lon2) * lon_scale
+    dy = lat1 - lat2
+    return float(np.hypot(dx, dy))
+
+
+def _daily_cluster_centroids(
+    sample_df: pd.DataFrame,
+    weight_col: str,
+    cluster_radius_deg: float = 0.30,
+) -> dict[str, list[dict[str, float | int | str]]]:
+    by_date: dict[str, list[dict[str, float | int | str]]] = {}
+    cols = ["sample_date", "sample_lon", "sample_lat", weight_col]
+    work = sample_df[cols].copy()
+    work[weight_col] = pd.to_numeric(work[weight_col], errors="coerce").fillna(0.0)
+    work = work.sort_values(["sample_date", weight_col], ascending=[True, False], kind="mergesort")
+
+    for date_val, group in work.groupby("sample_date", sort=True):
+        clusters: list[dict[str, float | int | str]] = []
+        for r in group.itertuples(index=False):
+            lon = _safe_float(getattr(r, "sample_lon", None))
+            lat = _safe_float(getattr(r, "sample_lat", None))
+            w = _safe_float(getattr(r, weight_col, None))
+            if lon is None or lat is None:
+                continue
+            weight = float(w if w is not None and w > 0 else 1.0)
+
+            best_idx = -1
+            best_dist = 1e9
+            for i, c in enumerate(clusters):
+                dist = _coord_distance_deg(
+                    lon,
+                    lat,
+                    float(c["centroid_lon"]),
+                    float(c["centroid_lat"]),
+                )
+                if dist < best_dist:
+                    best_dist = dist
+                    best_idx = i
+
+            if best_idx >= 0 and best_dist <= cluster_radius_deg:
+                c = clusters[best_idx]
+                prev_w = float(c["weight_sum"])
+                new_w = prev_w + weight
+                c["centroid_lon"] = (float(c["centroid_lon"]) * prev_w + lon * weight) / new_w
+                c["centroid_lat"] = (float(c["centroid_lat"]) * prev_w + lat * weight) / new_w
+                c["weight_sum"] = new_w
+                c["samples"] = int(c["samples"]) + 1
+            else:
+                clusters.append(
+                    {
+                        "sample_date": str(date_val),
+                        "centroid_lon": float(lon),
+                        "centroid_lat": float(lat),
+                        "weight_sum": float(weight),
+                        "samples": 1,
+                    }
+                )
+
+        clusters = sorted(clusters, key=lambda c: float(c["weight_sum"]), reverse=True)
+        by_date[str(date_val)] = clusters
+
+    return by_date
+
+
+def _build_multi_trajectories(
+    clusters_by_date: dict[str, list[dict[str, float | int | str]]],
+    link_radius_deg: float = 0.90,
+) -> list[dict[str, object]]:
+    dates = sorted(clusters_by_date.keys())
+    trajectories: list[dict[str, object]] = []
+    active_ids: list[int] = []
+    next_traj_id = 1
+
+    for date_val in dates:
+        day_clusters = clusters_by_date.get(date_val, [])
+        matched_traj: set[int] = set()
+        used_cluster: set[int] = set()
+
+        candidates: list[tuple[float, int, int]] = []
+        for traj_idx in active_ids:
+            pts = trajectories[traj_idx]["points"]
+            if not pts:
+                continue
+            last = pts[-1]
+            for c_idx, c in enumerate(day_clusters):
+                dist = _coord_distance_deg(
+                    float(last["lon"]),
+                    float(last["lat"]),
+                    float(c["centroid_lon"]),
+                    float(c["centroid_lat"]),
+                )
+                if dist <= link_radius_deg:
+                    candidates.append((dist, traj_idx, c_idx))
+        candidates.sort(key=lambda t: t[0])
+
+        for _, traj_idx, c_idx in candidates:
+            if traj_idx in matched_traj or c_idx in used_cluster:
+                continue
+            c = day_clusters[c_idx]
+            trajectories[traj_idx]["points"].append(
+                {
+                    "sample_date": str(date_val),
+                    "lon": float(c["centroid_lon"]),
+                    "lat": float(c["centroid_lat"]),
+                    "weight_sum": float(c["weight_sum"]),
+                    "samples": int(c["samples"]),
+                }
+            )
+            matched_traj.add(traj_idx)
+            used_cluster.add(c_idx)
+
+        new_active_ids = list(matched_traj)
+        for c_idx, c in enumerate(day_clusters):
+            if c_idx in used_cluster:
+                continue
+            trajectories.append(
+                {
+                    "trajectory_id": next_traj_id,
+                    "points": [
+                        {
+                            "sample_date": str(date_val),
+                            "lon": float(c["centroid_lon"]),
+                            "lat": float(c["centroid_lat"]),
+                            "weight_sum": float(c["weight_sum"]),
+                            "samples": int(c["samples"]),
+                        }
+                    ],
+                }
+            )
+            new_active_ids.append(len(trajectories) - 1)
+            next_traj_id += 1
+
+        active_ids = new_active_ids
+
+    return trajectories
+
+
 def build_assets(
     sample_risk_csv: Path,
     date_summary_csv: Path,
@@ -184,7 +325,9 @@ def build_assets(
     compact_points_path = output_dir / "spread_daily_compact.json"
     _write_json(compact_points_path, compact_points_payload)
 
-    # 2) Trajectory from weighted centroids by day.
+    # 2) Trajectories:
+    # - legacy: single weighted centroid by day
+    # - new: multiple trajectories from clustered daily centroids
     centroids = _weighted_centroids(sample, weight_col=trajectory_weight_col)
     centroids = centroids.sort_values("sample_date", kind="mergesort").reset_index(drop=True)
     line_coords = centroids[["centroid_lon", "centroid_lat"]].to_numpy(dtype=float).tolist()
@@ -203,6 +346,40 @@ def build_assets(
                 "properties": {"sample_date": r["sample_date"]},
             }
         )
+
+    clusters_by_date = _daily_cluster_centroids(sample, weight_col=trajectory_weight_col, cluster_radius_deg=0.30)
+    trajectories = _build_multi_trajectories(clusters_by_date, link_radius_deg=0.90)
+
+    for traj in trajectories:
+        pts = traj["points"]
+        if len(pts) >= 2:
+            traj_features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "LineString",
+                        "coordinates": [[float(p["lon"]), float(p["lat"])] for p in pts],
+                    },
+                    "properties": {
+                        "name": "multi_cluster_trajectory",
+                        "trajectory_id": int(traj["trajectory_id"]),
+                        "points": int(len(pts)),
+                    },
+                }
+            )
+        for p in pts:
+            traj_features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [float(p["lon"]), float(p["lat"])]},
+                    "properties": {
+                        "sample_date": p["sample_date"],
+                        "trajectory_id": int(traj["trajectory_id"]),
+                        "samples": int(p["samples"]),
+                        "weight_sum": float(p["weight_sum"]),
+                    },
+                }
+            )
     traj_fc = {"type": "FeatureCollection", "features": traj_features}
     traj_path = output_dir / "spread_trajectory.geojson"
     _write_json(traj_path, traj_fc)
@@ -226,6 +403,9 @@ def build_assets(
             ]
             for row in compact_centroids
         ],
+        "trajectories": trajectories,
+        "cluster_radius_deg": 0.30,
+        "link_radius_deg": 0.90,
     }
     compact_traj_path = output_dir / "spread_trajectory_compact.json"
     _write_json(compact_traj_path, compact_traj_payload)
@@ -291,6 +471,7 @@ def build_assets(
         "counts": {
             "spread_points": int(len(sample)),
             "trajectory_dates": int(len(centroids)),
+            "trajectory_count_multi": int(len(trajectories)),
             "daily_summary_rows": int(len(date_summary)),
             "tract_features": int(len(merged)),
         },

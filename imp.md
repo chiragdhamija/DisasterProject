@@ -140,7 +140,7 @@ Generated outputs:
 2. Hazard summary: [hazard_predictions_summary.json](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/hazard_predictions_summary.json)
 3. HEV features: [sample_features_hev.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_features_hev.csv)
 4. Final sample risk: [sample_risk_scores.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_risk_scores.csv)
-5. Tract risk summary: [tract_risk_summary.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/tract_risk_summary.csv)
+5. Tract rLoaded window: 2020-08-16, 2020-08-17, 2020-08-18isk summary: [tract_risk_summary.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/tract_risk_summary.csv)
 6. Date risk summary: [date_risk_summary.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/date_risk_summary.csv)
 7. Risk fusion summary: [risk_fusion_summary.json](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/risk_fusion_summary.json)
 

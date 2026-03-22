@@ -21,6 +21,7 @@ const state = {
   pointsByDate: new Map(), // date -> [ [lon,lat,hazard,risk,eal], ... ]
   dailyByDate: new Map(), // date -> summary object
   centroids: [], // [{sample_date, lon, lat}, ...]
+  trajectories: [], // [{trajectory_id, points:[{sample_date, lon, lat, weight_sum, samples}]}]
 
   pointBreaks: [0.2, 0.4, 0.6, 0.8],
   tractBreaks: [0.2, 0.4, 0.6, 0.8],
@@ -205,6 +206,7 @@ async function loadBaseDateWindow(baseDate, panToDate) {
   state.pointsByDate.clear();
   state.dailyByDate.clear();
   state.centroids = [];
+  state.trajectories = [];
   state.activeTractDate = "";
 
   const pbd = payload.points_by_date || {};
@@ -223,6 +225,23 @@ async function loadBaseDateWindow(baseDate, panToDate) {
       lat: Number(c.lat),
     }))
     .filter((c) => c.sample_date && Number.isFinite(c.lon) && Number.isFinite(c.lat));
+  state.trajectories = (payload.trajectories || [])
+    .map((t, idx) => {
+      const rawPoints = Array.isArray(t.points) ? t.points : [];
+      const points = rawPoints
+        .map((p) => ({
+          sample_date: String(p.sample_date || ""),
+          lon: Number(p.lon),
+          lat: Number(p.lat),
+          weight_sum: safeNum(p.weight_sum),
+          samples: Math.max(0, Math.round(safeNum(p.samples))),
+        }))
+        .filter((p) => p.sample_date && Number.isFinite(p.lon) && Number.isFinite(p.lat))
+        .sort((a, b) => a.sample_date.localeCompare(b.sample_date));
+      const tid = Number.isFinite(Number(t.trajectory_id)) ? Number(t.trajectory_id) : idx + 1;
+      return { trajectory_id: tid, points };
+    })
+    .filter((t) => t.points.length > 0);
 
   state.pointBreaks = normalizeBreaks(payload.point_breaks || state.pointBreaks);
 
@@ -299,6 +318,64 @@ function renderSpreadForDate(date) {
 
 function renderTrajectoryForDate(date, panToDate) {
   state.trajectoryLayer.clearLayers();
+  if (state.trajectories.length) {
+    const latestCandidates = [];
+    for (const traj of state.trajectories) {
+      const upto = traj.points.filter((p) => p.sample_date <= date);
+      if (!upto.length) {
+        continue;
+      }
+      const color = trajectoryColor(traj.trajectory_id);
+      if (upto.length >= 2) {
+        L.polyline(
+          upto.map((p) => [p.lat, p.lon]),
+          {
+            renderer: state.canvasRenderer,
+            color,
+            weight: 2.3,
+            opacity: 0.82,
+          },
+        ).addTo(state.trajectoryLayer);
+      }
+
+      const latest = upto[upto.length - 1];
+      latestCandidates.push(latest);
+      for (const p of upto) {
+        const isLatest = p === latest;
+        L.circleMarker([p.lat, p.lon], {
+          renderer: state.canvasRenderer,
+          radius: isLatest ? 4.8 : 2.2,
+          color: "#0b2e3a",
+          fillColor: color,
+          fillOpacity: isLatest ? 0.95 : 0.75,
+          weight: isLatest ? 1.2 : 0.7,
+        })
+          .bindTooltip(`T${traj.trajectory_id} | ${p.sample_date}`)
+          .addTo(state.trajectoryLayer);
+      }
+    }
+
+    if (panToDate && latestCandidates.length) {
+      const latest = latestCandidates.reduce((best, c) => {
+        if (!best) {
+          return c;
+        }
+        if (c.sample_date > best.sample_date) {
+          return c;
+        }
+        if (c.sample_date < best.sample_date) {
+          return best;
+        }
+        return safeNum(c.weight_sum) > safeNum(best.weight_sum) ? c : best;
+      }, null);
+      if (latest) {
+        state.map.panTo([latest.lat, latest.lon], { animate: true, duration: 0.5 });
+      }
+    }
+    return;
+  }
+
+  // Legacy fallback: single weighted centroid trajectory.
   const upto = state.centroids.filter((c) => c.sample_date <= date);
   if (!upto.length) {
     return;
@@ -408,7 +485,7 @@ function renderWindowChart() {
       labels,
       datasets: [
         {
-          label: "Mean Risk (USD millions/day)",
+          label: "Mean Risk per Sample (USD millions)",
           data: riskMeanM,
           yAxisID: "yMoney",
           borderColor: "#c0392b",
@@ -428,7 +505,7 @@ function renderWindowChart() {
           pointRadius: 2,
         },
         {
-          label: "EAL (USD millions)",
+          label: "EAL Total (USD millions/day)",
           data: ealM,
           yAxisID: "yMoney",
           borderColor: "#a45a00",
@@ -465,7 +542,7 @@ function renderWindowChart() {
         yMoney: {
           type: "linear",
           position: "right",
-          title: { display: true, text: "Risk / EAL (USD millions)" },
+          title: { display: true, text: "USD millions" },
           grid: { drawOnChartArea: false },
         },
       },
@@ -534,6 +611,24 @@ function colorFromBreaks(value, breaks) {
   if (value <= breaks[2]) return RISK_COLORS[2];
   if (value <= breaks[3]) return RISK_COLORS[3];
   return RISK_COLORS[4];
+}
+
+function trajectoryColor(id) {
+  const palette = [
+    "#205072",
+    "#329d9c",
+    "#56c596",
+    "#9c6f44",
+    "#8c4f91",
+    "#d96c06",
+    "#2f5d50",
+    "#7f4f24",
+    "#3d405b",
+    "#4a7c59",
+  ];
+  const raw = Number(id);
+  const idx = Number.isFinite(raw) ? Math.abs(Math.trunc(raw) - 1) % palette.length : 0;
+  return palette[idx];
 }
 
 function startPlayback() {

@@ -17,13 +17,14 @@
   "counts": {
     "spread_points": 61064,
     "trajectory_dates": 366,
+    "trajectory_count_multi": 8104,
     "daily_summary_rows": 366,
     "tract_features": 1048
   },
   "trajectory_weight_col": "risk_score",
   "keep_null_tracts": false,
-  "simplify_tolerance": 0.003,
-  "round_decimals": 4,
+  "simplify_tolerance": 0.001,
+  "round_decimals": 5,
   "map_extent": {
     "default_bbox": [
       -124.48,

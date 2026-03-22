@@ -74,11 +74,11 @@
               <strong id="metricHazard">-</strong>
             </article>
             <article class="metric-card">
-              <span>Mean Risk (USD/day)</span>
+              <span>Mean Risk (USD/day/sample)</span>
               <strong id="metricRisk">-</strong>
             </article>
             <article class="metric-card">
-              <span>EAL (USD/day)</span>
+              <span>EAL Total (USD/day)</span>
               <strong id="metricEal">-</strong>
             </article>
           </div>
@@ -88,7 +88,8 @@
           </div>
           <p class="footnote">
             Point map shows predicted spread samples for the selected day.
-            Trajectory is the weighted centroid path by day.
+            Trajectories are cluster-linked paths of predicted spread centers by day.
+            Mean Risk is per sample; EAL Total is summed over all samples for that day.
           </p>
         </aside>
       </main>

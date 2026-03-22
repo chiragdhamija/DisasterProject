@@ -75,6 +75,7 @@ class DataStore:
 
         self.points_by_date: dict[str, list[list[float]]] = {}
         self.centroids_by_date: dict[str, dict[str, float | str]] = {}
+        self.trajectories: list[dict[str, object]] = []
         self.daily_by_date: dict[str, dict[str, object]] = {}
         self.dates: list[str] = []
         self.date_to_index: dict[str, int] = {}
@@ -137,6 +138,37 @@ class DataStore:
                 continue
             self.centroids_by_date[date_key] = {"sample_date": date_key, "lon": lon, "lat": lat}
 
+        # New multi-trajectory payload (cluster-linked trajectories).
+        raw_trajs = payload.get("trajectories", [])
+        for idx, traj in enumerate(raw_trajs):
+            raw_points = traj.get("points", [])
+            points = []
+            for p in raw_points:
+                date_key = str(p.get("sample_date", "")).strip()
+                if not date_key:
+                    continue
+                lon = _safe_float(p.get("lon"), default=float("nan"))
+                lat = _safe_float(p.get("lat"), default=float("nan"))
+                if not math.isfinite(lon) or not math.isfinite(lat):
+                    continue
+                points.append(
+                    {
+                        "sample_date": date_key,
+                        "lon": lon,
+                        "lat": lat,
+                        "weight_sum": _safe_float(p.get("weight_sum")),
+                        "samples": int(_safe_float(p.get("samples"), default=0.0)),
+                    }
+                )
+            if not points:
+                continue
+            tid_raw = traj.get("trajectory_id")
+            try:
+                tid = int(tid_raw)
+            except (TypeError, ValueError):
+                tid = idx + 1
+            self.trajectories.append({"trajectory_id": tid, "points": points})
+
     def _load_daily_summary(self) -> None:
         rows = self._read_json(self.frontend_data_dir / "daily_risk_summary.json")
         for row in rows:
@@ -146,7 +178,18 @@ class DataStore:
             self.daily_by_date[date_key] = row
 
     def _build_date_index(self) -> None:
-        all_dates = set(self.points_by_date.keys()) | set(self.daily_by_date.keys()) | set(self.centroids_by_date.keys())
+        traj_dates: set[str] = set()
+        for traj in self.trajectories:
+            for p in traj.get("points", []):
+                date_val = str(p.get("sample_date", "")).strip()
+                if date_val:
+                    traj_dates.add(date_val)
+        all_dates = (
+            set(self.points_by_date.keys())
+            | set(self.daily_by_date.keys())
+            | set(self.centroids_by_date.keys())
+            | traj_dates
+        )
         self.dates = sorted(all_dates)
         self.date_to_index = {d: i for i, d in enumerate(self.dates)}
         if self.dates:
@@ -237,7 +280,7 @@ class DataStore:
 
     def get_window(self, raw_date: str | None, raw_horizon: str | None) -> dict[str, object]:
         if not self.dates:
-            return {"window_dates": [], "points_by_date": {}, "centroids": [], "daily": []}
+            return {"window_dates": [], "points_by_date": {}, "centroids": [], "trajectories": [], "daily": []}
 
         date_key = self._resolve_date(raw_date)
         horizon = self.horizon_default
@@ -255,6 +298,18 @@ class DataStore:
         window_dates = self.dates[idx : idx + horizon + 1]
         points_by_date = {d: self.points_by_date.get(d, []) for d in window_dates}
         centroids = [self.centroids_by_date[d] for d in window_dates if d in self.centroids_by_date]
+        window_set = set(window_dates)
+        trajectories = []
+        for traj in self.trajectories:
+            pts = [p for p in traj.get("points", []) if p.get("sample_date") in window_set]
+            if not pts:
+                continue
+            trajectories.append(
+                {
+                    "trajectory_id": int(traj.get("trajectory_id", 0)),
+                    "points": pts,
+                }
+            )
         daily_rows = [self.daily_by_date.get(d, {"sample_date": d}) for d in window_dates]
 
         return {
@@ -263,6 +318,7 @@ class DataStore:
             "horizon": horizon,
             "points_by_date": points_by_date,
             "centroids": centroids,
+            "trajectories": trajectories,
             "daily": daily_rows,
             "point_breaks": self.point_breaks,
         }
