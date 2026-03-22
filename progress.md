@@ -18,6 +18,10 @@ Build a **hazard-first wildfire pipeline**:
 - Updated frontend metric wording for clarity:
   - `Mean Risk (USD/day/sample)` = mean per-sample risk.
   - `EAL Total (USD/day)` = summed expected loss across samples for that day.
+- Updated spread-day semantics in frontend:
+  - Base selected day now uses observed fire-only rendering (`gt_fire_frac > 0`).
+  - Predicted spread rendering starts from next day (`hazard_pred_fire_frac > 0`).
+  - Trajectories are rendered only for predicted days (after base day).
 
 ## Option A (Full-Year Coverage) Update
 - Implemented Option A exporter changes in:

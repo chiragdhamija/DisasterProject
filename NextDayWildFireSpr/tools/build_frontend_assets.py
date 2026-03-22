@@ -18,6 +18,7 @@ INTERIM_DIR = PROJECT_DIR / "data" / "interim"
 FRONTEND_DIR = PROJECT_DIR / "frontend" / "data"
 
 DEFAULT_SAMPLE_RISK = INTERIM_DIR / "sample_risk_scores.csv"
+DEFAULT_HAZARD_CSV = INTERIM_DIR / "hazard_predictions.csv"
 DEFAULT_DATE_SUMMARY = INTERIM_DIR / "date_risk_summary.csv"
 DEFAULT_TRACT_RISK = INTERIM_DIR / "tract_risk_summary.csv"
 DEFAULT_TRACTS_GPKG = INTERIM_DIR / "geospatial_3310" / "tracts_3310.gpkg"
@@ -94,6 +95,7 @@ def _to_feature(row: pd.Series) -> dict[str, object]:
             "hazard_prob_mean": _safe_float(row.get("hazard_prob_mean")),
             "hazard_prob_max": _safe_float(row.get("hazard_prob_max")),
             "hazard_pred_fire_frac": _safe_float(row.get("hazard_pred_fire_frac")),
+            "gt_fire_frac": _safe_float(row.get("gt_fire_frac")),
             "vulnerability_index": _safe_float(row.get("vulnerability_index")),
             "exposure_index": _safe_float(row.get("exposure_index")),
             "GEOID": str(row.get("GEOID")) if pd.notna(row.get("GEOID")) else None,
@@ -114,7 +116,7 @@ def _weighted_centroids(sample_df: pd.DataFrame, weight_col: str) -> pd.DataFram
             lon_c = float(np.average(lon, weights=w))
             lat_c = float(np.average(lat, weights=w))
         rows.append({"sample_date": date_val, "centroid_lon": lon_c, "centroid_lat": lat_c})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["sample_date", "centroid_lon", "centroid_lat"])
 
 
 def _coord_distance_deg(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -260,6 +262,7 @@ def _build_multi_trajectories(
 
 def build_assets(
     sample_risk_csv: Path,
+    hazard_csv: Path,
     date_summary_csv: Path,
     tract_risk_csv: Path,
     tracts_gpkg: Path,
@@ -277,6 +280,26 @@ def build_assets(
         return 2
 
     sample = pd.read_csv(sample_risk_csv, dtype={"sample_id": str, "GEOID": str})
+    hazard_merge_info = {"attempted": False, "used": False, "hazard_csv": str(hazard_csv)}
+    if hazard_csv.exists():
+        hazard_merge_info["attempted"] = True
+        haz = pd.read_csv(hazard_csv, dtype={"sample_id": str})
+        merge_cols = ["sample_id"] + [c for c in ["gt_fire_frac", "hazard_pred_fire_frac"] if c in haz.columns]
+        if len(merge_cols) > 1:
+            haz = haz[merge_cols].drop_duplicates(subset=["sample_id"], keep="last")
+            sample = sample.merge(haz, on="sample_id", how="left", suffixes=("", "_haz"))
+            for col in ["gt_fire_frac", "hazard_pred_fire_frac"]:
+                haz_col = f"{col}_haz"
+                if haz_col in sample.columns:
+                    if col in sample.columns:
+                        sample[col] = pd.to_numeric(sample[col], errors="coerce").fillna(
+                            pd.to_numeric(sample[haz_col], errors="coerce")
+                        )
+                    else:
+                        sample[col] = pd.to_numeric(sample[haz_col], errors="coerce")
+                    sample = sample.drop(columns=[haz_col])
+            hazard_merge_info["used"] = True
+
     date_summary = pd.read_csv(date_summary_csv)
     tract_risk = pd.read_csv(tract_risk_csv, dtype={"GEOID": str})
 
@@ -292,6 +315,10 @@ def build_assets(
 
     sample["sample_date"] = pd.to_datetime(sample["sample_date"], errors="coerce").dt.strftime("%Y-%m-%d")
     sample = sample.dropna(subset=["sample_date", "sample_lon", "sample_lat"]).copy()
+    if "hazard_pred_fire_frac" in sample.columns:
+        sample["hazard_pred_fire_frac"] = pd.to_numeric(sample["hazard_pred_fire_frac"], errors="coerce")
+    if "gt_fire_frac" in sample.columns:
+        sample["gt_fire_frac"] = pd.to_numeric(sample["gt_fire_frac"], errors="coerce")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
@@ -313,22 +340,40 @@ def build_assets(
                     _round_or_none(getattr(r, "hazard_index", None), round_decimals),
                     _round_or_none(getattr(r, "risk_score", None), round_decimals),
                     _round_or_none(getattr(r, "risk_eal_usd", None), 2),
+                    _round_or_none(getattr(r, "hazard_pred_fire_frac", None), round_decimals),
+                    _round_or_none(getattr(r, "gt_fire_frac", None), round_decimals),
                 ]
             )
         compact_points_by_date[str(date_val)] = rows
 
     compact_points_payload = {
         "dates": sorted(compact_points_by_date.keys()),
-        "schema": ["lon", "lat", "hazard_index", "risk_score", "risk_eal_usd"],
+        "schema": [
+            "lon",
+            "lat",
+            "hazard_index",
+            "risk_score",
+            "risk_eal_usd",
+            "hazard_pred_fire_frac",
+            "gt_fire_frac",
+        ],
         "points_by_date": compact_points_by_date,
     }
     compact_points_path = output_dir / "spread_daily_compact.json"
     _write_json(compact_points_path, compact_points_payload)
 
     # 2) Trajectories:
+    # - Build from predicted-fire-positive samples only (not all sampled tiles).
     # - legacy: single weighted centroid by day
     # - new: multiple trajectories from clustered daily centroids
-    centroids = _weighted_centroids(sample, weight_col=trajectory_weight_col)
+    trajectory_source = sample.copy()
+    if "hazard_pred_fire_frac" in trajectory_source.columns:
+        pred_mask = pd.to_numeric(
+            trajectory_source["hazard_pred_fire_frac"], errors="coerce"
+        ).fillna(0.0) > 0.0
+        trajectory_source = trajectory_source[pred_mask].copy()
+
+    centroids = _weighted_centroids(trajectory_source, weight_col=trajectory_weight_col)
     centroids = centroids.sort_values("sample_date", kind="mergesort").reset_index(drop=True)
     line_coords = centroids[["centroid_lon", "centroid_lat"]].to_numpy(dtype=float).tolist()
     traj_features = [
@@ -347,7 +392,11 @@ def build_assets(
             }
         )
 
-    clusters_by_date = _daily_cluster_centroids(sample, weight_col=trajectory_weight_col, cluster_radius_deg=0.30)
+    clusters_by_date = _daily_cluster_centroids(
+        trajectory_source,
+        weight_col=trajectory_weight_col,
+        cluster_radius_deg=0.30,
+    )
     trajectories = _build_multi_trajectories(clusters_by_date, link_radius_deg=0.90)
 
     for traj in trajectories:
@@ -455,6 +504,7 @@ def build_assets(
     summary = {
         "inputs": {
             "sample_risk_csv": str(sample_risk_csv),
+            "hazard_csv": str(hazard_csv),
             "date_summary_csv": str(date_summary_csv),
             "tract_risk_csv": str(tract_risk_csv),
             "tracts_gpkg": str(tracts_gpkg),
@@ -470,6 +520,7 @@ def build_assets(
         },
         "counts": {
             "spread_points": int(len(sample)),
+            "trajectory_source_points": int(len(trajectory_source)),
             "trajectory_dates": int(len(centroids)),
             "trajectory_count_multi": int(len(trajectories)),
             "daily_summary_rows": int(len(date_summary)),
@@ -479,6 +530,14 @@ def build_assets(
         "keep_null_tracts": keep_null_tracts,
         "simplify_tolerance": simplify_tolerance,
         "round_decimals": round_decimals,
+        "hazard_merge": {
+            **hazard_merge_info,
+            "gt_fire_frac_non_null": int(
+                pd.to_numeric(sample.get("gt_fire_frac"), errors="coerce").notna().sum()
+            )
+            if "gt_fire_frac" in sample.columns
+            else 0,
+        },
         "map_extent": {
             "default_bbox": CALIFORNIA_BBOX,
             "derived_sample_bbox": {
@@ -504,6 +563,7 @@ def build_assets(
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--sample_risk_csv", type=Path, default=DEFAULT_SAMPLE_RISK)
+    p.add_argument("--hazard_csv", type=Path, default=DEFAULT_HAZARD_CSV)
     p.add_argument("--date_summary_csv", type=Path, default=DEFAULT_DATE_SUMMARY)
     p.add_argument("--tract_risk_csv", type=Path, default=DEFAULT_TRACT_RISK)
     p.add_argument("--tracts_gpkg", type=Path, default=DEFAULT_TRACTS_GPKG)
@@ -538,6 +598,7 @@ def main() -> int:
     args = build_parser().parse_args()
     return build_assets(
         sample_risk_csv=args.sample_risk_csv,
+        hazard_csv=args.hazard_csv,
         date_summary_csv=args.date_summary_csv,
         tract_risk_csv=args.tract_risk_csv,
         tracts_gpkg=args.tracts_gpkg,

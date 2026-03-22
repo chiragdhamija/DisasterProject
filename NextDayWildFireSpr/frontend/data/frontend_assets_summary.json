@@ -1,6 +1,7 @@
 {
   "inputs": {
     "sample_risk_csv": "NextDayWildFireSpr/data/interim/sample_risk_scores.csv",
+    "hazard_csv": "NextDayWildFireSpr/data/interim/hazard_predictions.csv",
     "date_summary_csv": "NextDayWildFireSpr/data/interim/date_risk_summary.csv",
     "tract_risk_csv": "NextDayWildFireSpr/data/interim/tract_risk_summary.csv",
     "tracts_gpkg": "NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg"
@@ -16,8 +17,9 @@
   },
   "counts": {
     "spread_points": 61064,
-    "trajectory_dates": 366,
-    "trajectory_count_multi": 8104,
+    "trajectory_source_points": 10355,
+    "trajectory_dates": 356,
+    "trajectory_count_multi": 1461,
     "daily_summary_rows": 366,
     "tract_features": 1048
   },
@@ -25,6 +27,12 @@
   "keep_null_tracts": false,
   "simplify_tolerance": 0.001,
   "round_decimals": 5,
+  "hazard_merge": {
+    "attempted": true,
+    "used": true,
+    "hazard_csv": "NextDayWildFireSpr/data/interim/hazard_predictions.csv",
+    "gt_fire_frac_non_null": 61064
+  },
   "map_extent": {
     "default_bbox": [
       -124.48,

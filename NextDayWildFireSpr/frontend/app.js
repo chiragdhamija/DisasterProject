@@ -289,6 +289,7 @@ async function setDateOffset(nextOffset, panToDate) {
 function renderSpreadForDate(date) {
   state.spreadLayer.clearLayers();
   const rows = state.pointsByDate.get(date) || [];
+  const isBaseDay = date === state.selectedBaseDate;
   for (const row of rows) {
     const lon = Number(row[0]);
     const lat = Number(row[1]);
@@ -298,10 +299,35 @@ function renderSpreadForDate(date) {
     const hazard = safeNum(row[2]);
     const risk = safeNum(row[3]);
     const eal = safeNum(row[4]);
+    const predFireFrac = safeNum(row[5]);
+    const gtFireFrac = safeNum(row[6]);
+
+    if (isBaseDay) {
+      if (gtFireFrac <= 0) {
+        continue;
+      }
+      const marker = L.circleMarker([lat, lon], {
+        renderer: state.canvasRenderer,
+        radius: 3 + clamp(Math.sqrt(gtFireFrac) * 16, 0, 9),
+        color: "#5c1306",
+        weight: 0.7,
+        fillColor: observedFireColor(gtFireFrac),
+        fillOpacity: 0.9,
+      });
+      marker.bindPopup(
+        `Date: ${date}<br/>Observed fire fraction (ground truth): ${gtFireFrac.toFixed(4)}`,
+      );
+      marker.addTo(state.spreadLayer);
+      continue;
+    }
+
+    if (predFireFrac <= 0) {
+      continue;
+    }
 
     const marker = L.circleMarker([lat, lon], {
       renderer: state.canvasRenderer,
-      radius: 3 + clamp(hazard * 8, 0, 8),
+      radius: 3 + clamp(Math.sqrt(predFireFrac) * 16, 0, 8),
       color: "#522012",
       weight: 0.65,
       fillColor: colorFromBreaks(risk, state.pointBreaks),
@@ -310,7 +336,7 @@ function renderSpreadForDate(date) {
     marker.bindPopup(
       `Date: ${date}<br/>Hazard index: ${hazard.toFixed(4)}<br/>Risk (H×E×V): ${formatMoney.format(
         risk,
-      )}<br/>EAL: ${formatMoney.format(eal)}`,
+      )}<br/>Predicted fire fraction: ${predFireFrac.toFixed(4)}<br/>EAL: ${formatMoney.format(eal)}`,
     );
     marker.addTo(state.spreadLayer);
   }
@@ -318,10 +344,15 @@ function renderSpreadForDate(date) {
 
 function renderTrajectoryForDate(date, panToDate) {
   state.trajectoryLayer.clearLayers();
+  if (!state.selectedBaseDate || date <= state.selectedBaseDate) {
+    return;
+  }
   if (state.trajectories.length) {
     const latestCandidates = [];
     for (const traj of state.trajectories) {
-      const upto = traj.points.filter((p) => p.sample_date <= date);
+      const upto = traj.points.filter(
+        (p) => p.sample_date > state.selectedBaseDate && p.sample_date <= date,
+      );
       if (!upto.length) {
         continue;
       }
@@ -376,7 +407,9 @@ function renderTrajectoryForDate(date, panToDate) {
   }
 
   // Legacy fallback: single weighted centroid trajectory.
-  const upto = state.centroids.filter((c) => c.sample_date <= date);
+  const upto = state.centroids.filter(
+    (c) => c.sample_date > state.selectedBaseDate && c.sample_date <= date,
+  );
   if (!upto.length) {
     return;
   }
@@ -577,9 +610,18 @@ function updateDailyMetrics(date) {
 }
 
 function renderSpreadLegend() {
+  if (currentDate() === state.selectedBaseDate) {
+    ui.mapLegend.innerHTML = [
+      legendChip("#fee5d9", "Observed fire frac ≤ 0.01"),
+      legendChip("#fcae91", "0.01 - 0.05"),
+      legendChip("#fb6a4a", "0.05 - 0.15"),
+      legendChip("#cb181d", "> 0.15"),
+    ].join("");
+    return;
+  }
   const [b1, b2, b3, b4] = state.pointBreaks;
   ui.mapLegend.innerHTML = [
-    legendChip(RISK_COLORS[0], `≤ ${formatRiskValue(b1)}`),
+    legendChip(RISK_COLORS[0], `Predicted risk ≤ ${formatRiskValue(b1)}`),
     legendChip(RISK_COLORS[1], `${formatRiskValue(b1)} - ${formatRiskValue(b2)}`),
     legendChip(RISK_COLORS[2], `${formatRiskValue(b2)} - ${formatRiskValue(b3)}`),
     legendChip(RISK_COLORS[3], `${formatRiskValue(b3)} - ${formatRiskValue(b4)}`),
@@ -629,6 +671,13 @@ function trajectoryColor(id) {
   const raw = Number(id);
   const idx = Number.isFinite(raw) ? Math.abs(Math.trunc(raw) - 1) % palette.length : 0;
   return palette[idx];
+}
+
+function observedFireColor(value) {
+  if (value <= 0.01) return "#fee5d9";
+  if (value <= 0.05) return "#fcae91";
+  if (value <= 0.15) return "#fb6a4a";
+  return "#cb181d";
 }
 
 function startPlayback() {

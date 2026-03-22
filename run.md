@@ -258,6 +258,7 @@ cd "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Predicti
 ```bash
 .venv/bin/python NextDayWildFireSpr/tools/build_frontend_assets.py \
   --sample_risk_csv NextDayWildFireSpr/data/interim/sample_risk_scores.csv \
+  --hazard_csv NextDayWildFireSpr/data/interim/hazard_predictions.csv \
   --date_summary_csv NextDayWildFireSpr/data/interim/date_risk_summary.csv \
   --tract_risk_csv NextDayWildFireSpr/data/interim/tract_risk_summary.csv \
   --tracts_gpkg NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg \
@@ -285,6 +286,7 @@ Notes:
 - Trajectory payload now includes:
   - legacy `centroids` (single weighted centroid path),
   - `trajectories` (multi-track, cluster-linked paths) used by the UI.
+- Base date map is rendered from `gt_fire_frac` (observed fire only); future days use predicted spread (`hazard_pred_fire_frac`).
 
 ## 12) Run frontend locally
 
