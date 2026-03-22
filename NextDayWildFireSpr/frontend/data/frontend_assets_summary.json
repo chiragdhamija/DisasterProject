@@ -1,0 +1,41 @@
+{
+  "inputs": {
+    "sample_risk_csv": "NextDayWildFireSpr/data/interim/sample_risk_scores.csv",
+    "date_summary_csv": "NextDayWildFireSpr/data/interim/date_risk_summary.csv",
+    "tract_risk_csv": "NextDayWildFireSpr/data/interim/tract_risk_summary.csv",
+    "tracts_gpkg": "NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg"
+  },
+  "outputs": {
+    "output_dir": "NextDayWildFireSpr/frontend/data",
+    "spread_points_geojson": "NextDayWildFireSpr/frontend/data/spread_points.geojson",
+    "spread_daily_compact_json": "NextDayWildFireSpr/frontend/data/spread_daily_compact.json",
+    "spread_trajectory_geojson": "NextDayWildFireSpr/frontend/data/spread_trajectory.geojson",
+    "spread_trajectory_compact_json": "NextDayWildFireSpr/frontend/data/spread_trajectory_compact.json",
+    "daily_risk_summary_json": "NextDayWildFireSpr/frontend/data/daily_risk_summary.json",
+    "tract_risk_geojson": "NextDayWildFireSpr/frontend/data/tract_risk.geojson"
+  },
+  "counts": {
+    "spread_points": 61064,
+    "trajectory_dates": 366,
+    "daily_summary_rows": 366,
+    "tract_features": 1048
+  },
+  "trajectory_weight_col": "risk_score",
+  "keep_null_tracts": false,
+  "simplify_tolerance": 0.003,
+  "round_decimals": 4,
+  "map_extent": {
+    "default_bbox": [
+      -124.48,
+      32.4,
+      -114.13,
+      42.1
+    ],
+    "derived_sample_bbox": {
+      "min_lon": -124.349297,
+      "min_lat": 32.53249,
+      "max_lon": -114.261215,
+      "max_lat": 42.000732
+    }
+  }
+}

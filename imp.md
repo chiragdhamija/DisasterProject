@@ -213,3 +213,86 @@ python trainModel-II.py \
 ```
 
 I can also patch training logs to print explicit fire-class-only metrics every epoch so we stop relying on misleading accuracy/macro-only numbers.
+
+
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/preprocess_geospatial_layers.py \
+  --ext_root Ext_Datasets \
+  --output_dir NextDayWildFireSpr/data/interim/geospatial_3310
+/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/.venv/lib/python3.12/site-packages/pyogrio/raw.py:200: RuntimeWarning: Ext_Datasets/California_Historic_Fire_Perimeters_-6273763535668926275/California_Fire_Perimeters_(all).shp contains polygon(s) with rings with invalid winding order. Autocorrecting them, but that shapefile should be corrected using ogr2ogr for example.
+  return ogr_read(
+[DONE] Tracts saved: NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg (9129 rows)
+[DONE] Roads saved: NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg (779834 rows)
+[DONE] Fire perimeters saved: NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg (22810 rows)
+[DONE] Summary saved: NextDayWildFireSpr/data/interim/geospatial_3310/geospatial_preprocess_summary.json
+
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/build_sample_tract_join.py \
+  --manifest NextDayWildFireSpr/data/ndws64_meta_ca/sample_manifest.csv \
+  --tracts NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg \
+  --output_csv NextDayWildFireSpr/data/interim/sample_tract_join.csv \
+  --summary_json NextDayWildFireSpr/data/interim/sample_tract_join_summary.json
+[DONE] Wrote sample-tract join: NextDayWildFireSpr/data/interim/sample_tract_join.csv
+[DONE] Wrote summary: NextDayWildFireSpr/data/interim/sample_tract_join_summary.json
+[INFO] Match rate: 1.0000 (61064/61064)
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/build_hev_features.py \
+  --sample_tract_csv NextDayWildFireSpr/data/interim/sample_tract_join.csv \
+  --roads NextDayWildFireSpr/data/interim/geospatial_3310/roads_3310.gpkg \
+  --fire NextDayWildFireSpr/data/interim/geospatial_3310/fire_perimeters_3310.gpkg \
+  --acs_json Ext_Datasets/acs_2020_exposure.json \
+  --svi_csv Ext_Datasets/SVI_2020_CaliforniaTract.csv \
+  --output_csv NextDayWildFireSpr/data/interim/sample_features_hev.csv \
+  --summary_json NextDayWildFireSpr/data/interim/sample_features_hev_summary.json
+[DONE] Wrote HEV feature table: NextDayWildFireSpr/data/interim/sample_features_hev.csv
+[DONE] Wrote summary: NextDayWildFireSpr/data/interim/sample_features_hev_summary.json
+[INFO] Rows: 61064
+
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/infer_hazard_scores.py \
+  --dataset_dir NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard \
+  --channels_metadata NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/channels_metadata.json \
+  --sample_index_csv NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard/sample_index.csv \
+  --weights NextDayWildFireSpr/savedModels/model-U_Net-bestF1Score-Rank-0.weights \
+  --split all \
+  --threshold 0.5 \
+  --batch_size 64 \
+  --output_csv NextDayWildFireSpr/data/interim/hazard_predictions.csv \
+  --summary_json NextDayWildFireSpr/data/interim/hazard_predictions_summary.json
+[INFO] Running split=train, samples=50142, device=cuda
+[INFO] Running split=validation, samples=5525, device=cuda
+[INFO] Running split=test, samples=5397, device=cuda
+[DONE] Wrote hazard predictions: NextDayWildFireSpr/data/interim/hazard_predictions.csv
+[DONE] Wrote hazard summary: NextDayWildFireSpr/data/interim/hazard_predictions_summary.json
+[INFO] Pixel metrics: PosF1=0.3636, MacroF1=0.6802, MacroIoU=0.6080, Acc=0.9937
+
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/fuse_risk_scores.py \
+  --hazard_csv NextDayWildFireSpr/data/interim/hazard_predictions.csv \
+  --hev_csv NextDayWildFireSpr/data/interim/sample_features_hev.csv \
+  --output_sample_csv NextDayWildFireSpr/data/interim/sample_risk_scores.csv \
+  --output_tract_csv NextDayWildFireSpr/data/interim/tract_risk_summary.csv \
+  --output_date_csv NextDayWildFireSpr/data/interim/date_risk_summary.csv \
+  --summary_json NextDayWildFireSpr/data/interim/risk_fusion_summary.json
+[DONE] Wrote sample risk scores: NextDayWildFireSpr/data/interim/sample_risk_scores.csv
+[DONE] Wrote tract risk summary: NextDayWildFireSpr/data/interim/tract_risk_summary.csv
+[DONE] Wrote date risk summary: NextDayWildFireSpr/data/interim/date_risk_summary.csv
+[DONE] Wrote risk summary: NextDayWildFireSpr/data/interim/risk_fusion_summary.json
+
+
+(.venv) chirag@chirag-Legion-5-16IRX9:~/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction$ python NextDayWildFireSpr/tools/build_frontend_assets.py \
+  --sample_risk_csv NextDayWildFireSpr/data/interim/sample_risk_scores.csv \
+  --date_summary_csv NextDayWildFireSpr/data/interim/date_risk_summary.csv \
+  --tract_risk_csv NextDayWildFireSpr/data/interim/tract_risk_summary.csv \
+  --tracts_gpkg NextDayWildFireSpr/data/interim/geospatial_3310/tracts_3310.gpkg \
+  --output_dir NextDayWildFireSpr/frontend/data \
+  --summary_json NextDayWildFireSpr/frontend/data/frontend_assets_summary.json \
+  --round_decimals 4 \
+  --simplify_tolerance 0.003
+[DONE] spread points: NextDayWildFireSpr/frontend/data/spread_points.geojson
+[DONE] spread compact: NextDayWildFireSpr/frontend/data/spread_daily_compact.json
+[DONE] trajectory: NextDayWildFireSpr/frontend/data/spread_trajectory.geojson
+[DONE] trajectory compact: NextDayWildFireSpr/frontend/data/spread_trajectory_compact.json
+[DONE] daily summary: NextDayWildFireSpr/frontend/data/daily_risk_summary.json
+[DONE] tract risk layer: NextDayWildFireSpr/frontend/data/tract_risk.geojson
+[DONE] summary: NextDayWildFireSpr/frontend/data/frontend_assets_summary.json
