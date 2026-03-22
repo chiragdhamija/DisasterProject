@@ -160,6 +160,12 @@ button:hover {
   padding: 12px;
 }
 
+.side-wrap {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 #map {
   width: 100%;
   min-height: 670px;
@@ -218,6 +224,19 @@ button:hover {
 
 .metric-card strong {
   font-size: 1rem;
+}
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 250px;
+  max-height: 250px;
+}
+
+#riskChart {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .footnote {

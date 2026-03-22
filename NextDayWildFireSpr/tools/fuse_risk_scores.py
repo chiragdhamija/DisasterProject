@@ -154,19 +154,13 @@ def fuse_risk(
     )
     merged["risk_score_weighted"] = merged["risk_score_weighted"].clip(0.0, 1.0)
 
-    # Primary risk per slides: R = H x E x V (index form for mapping).
+    # Primary risk per slides: R = H x E x V.
     vul_default = float(pd.to_numeric(merged["vulnerability_index"], errors="coerce").median(skipna=True))
     if not np.isfinite(vul_default):
         vul_default = 0.5
     merged["vulnerability_for_risk"] = pd.to_numeric(
         merged["vulnerability_index"], errors="coerce"
     ).fillna(vul_default)
-    merged["risk_score"] = (
-        merged["hazard_index"] * merged["exposure_index"] * merged["vulnerability_for_risk"]
-    ).clip(0.0, 1.0)
-
-    # Additional composite index aligned to multiplicative HEV framing.
-    merged["risk_hev_product"] = merged["risk_score"]
 
     # Monetary and impact proxies (tract-level socioeconomic values broadcast to samples).
     merged["acs_population"] = pd.to_numeric(merged.get("acs_population"), errors="coerce")
@@ -179,16 +173,36 @@ def fuse_risk(
     merged.loc[merged["acs_median_home_value"] <= 0, "acs_median_home_value"] = np.nan
 
     merged["asset_value_usd"] = merged["acs_housing_units"] * merged["acs_median_home_value"]
+    merged["asset_value_usd"] = pd.to_numeric(merged["asset_value_usd"], errors="coerce")
+    merged.loc[merged["asset_value_usd"] < 0, "asset_value_usd"] = np.nan
+
+    # Direct monetary risk (EAL proxy): H x E x V.
+    merged["risk_score"] = (
+        merged["hazard_index"] * merged["asset_value_usd"] * merged["vulnerability_for_risk"]
+    )
+    merged["risk_score"] = pd.to_numeric(merged["risk_score"], errors="coerce")
+    merged.loc[merged["risk_score"] < 0, "risk_score"] = np.nan
+
+    # Additional composite alias aligned to multiplicative HEV framing.
+    merged["risk_hev_product"] = merged["risk_score"]
+
+    # Secondary weighted monetary proxy (kept for comparison only).
     merged["expected_property_loss_usd_weighted"] = merged["risk_score_weighted"] * merged["asset_value_usd"]
-    merged["expected_property_loss_usd_hev"] = merged["risk_score"] * merged["asset_value_usd"]
-    merged["expected_population_affected"] = merged["risk_score"] * merged["acs_population"]
-    merged["expected_housing_units_affected"] = merged["risk_score"] * merged["acs_housing_units"]
+    merged["expected_property_loss_usd_hev"] = merged["risk_score"]
+
+    # Population/household affected proxies use H x V (not monetary E).
+    merged["expected_population_affected"] = (
+        merged["hazard_index"] * merged["vulnerability_for_risk"] * merged["acs_population"]
+    )
+    merged["expected_housing_units_affected"] = (
+        merged["hazard_index"] * merged["vulnerability_for_risk"] * merged["acs_housing_units"]
+    )
 
     # EAL-style explicit aliases.
     merged["hazard_annual_prob"] = merged["hazard_index"]
     merged["exposure_asset_value_usd"] = merged["asset_value_usd"]
     merged["vulnerability_damage_fraction"] = merged["vulnerability_for_risk"]
-    merged["risk_eal_usd"] = merged["expected_property_loss_usd_hev"]
+    merged["risk_eal_usd"] = merged["risk_score"]
 
     # Risk tiers by quantiles.
     labels = ["very_low", "low", "moderate", "high", "very_high"]
@@ -334,8 +348,8 @@ def fuse_risk(
             "hev_csv": str(hev_csv),
         },
         "formula": {
-            "primary_risk": "risk_score = hazard_index * exposure_index * vulnerability_for_risk",
-            "eal_usd": "risk_eal_usd = hazard_index * asset_value_usd * vulnerability_for_risk",
+            "primary_risk": "risk_score_usd = hazard_index * asset_value_usd * vulnerability_for_risk",
+            "eal_usd": "risk_eal_usd = risk_score_usd",
             "vulnerability_imputation": {
                 "strategy": "median_fill_if_missing",
                 "value": vul_default,

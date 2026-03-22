@@ -16,6 +16,7 @@ const state = {
   speedMs: 800,
   playing: false,
   timerId: null,
+  sliderDebounceId: null,
 
   pointsByDate: new Map(), // date -> [ [lon,lat,hazard,risk,eal], ... ]
   dailyByDate: new Map(), // date -> summary object
@@ -33,6 +34,7 @@ const state = {
   spreadLayer: null,
   trajectoryLayer: null,
   tractLayer: null,
+  activeTractDate: "",
   chart: null,
 };
 
@@ -129,7 +131,25 @@ function bindEvents() {
   });
 
   ui.dateSlider.addEventListener("input", () => {
-    setDateOffset(Number(ui.dateSlider.value), true);
+    const nextOffset = Number(ui.dateSlider.value);
+    const previewDate =
+      state.windowDates[Math.max(0, Math.min(nextOffset, state.windowDates.length - 1))] || "-";
+    ui.dateLabel.textContent = `Date: ${previewDate}`;
+    if (state.sliderDebounceId) {
+      clearTimeout(state.sliderDebounceId);
+    }
+    const delayMs = state.mode === "risk" ? 220 : 70;
+    state.sliderDebounceId = setTimeout(() => {
+      void setDateOffset(nextOffset, true);
+    }, delayMs);
+  });
+
+  ui.dateSlider.addEventListener("change", () => {
+    if (state.sliderDebounceId) {
+      clearTimeout(state.sliderDebounceId);
+      state.sliderDebounceId = null;
+    }
+    void setDateOffset(Number(ui.dateSlider.value), true);
   });
 
   ui.viewMode.addEventListener("change", () => {
@@ -195,6 +215,7 @@ async function loadBaseDateWindow(baseDate, panToDate) {
   state.pointsByDate.clear();
   state.dailyByDate.clear();
   state.centroids = [];
+  state.activeTractDate = "";
 
   const pbd = payload.points_by_date || {};
   for (const d of state.windowDates) {
@@ -278,8 +299,8 @@ function renderSpreadForDate(date) {
       fillOpacity: 0.84,
     });
     marker.bindPopup(
-      `Date: ${date}<br/>Hazard index: ${hazard.toFixed(4)}<br/>Risk score: ${risk.toFixed(
-        4,
+      `Date: ${date}<br/>Hazard index: ${hazard.toFixed(4)}<br/>Risk (H×E×V): ${formatMoney.format(
+        risk,
       )}<br/>EAL: ${formatMoney.format(eal)}`,
     );
     marker.addTo(state.spreadLayer);
@@ -328,6 +349,13 @@ async function renderRiskForDate(date) {
   if (!date) {
     return;
   }
+  if (state.activeTractDate === date && state.tractLayer) {
+    if (!state.map.hasLayer(state.tractLayer) && state.mode === "risk") {
+      state.tractLayer.addTo(state.map);
+    }
+    renderRiskLegend();
+    return;
+  }
   state.riskFetchSeq += 1;
   const fetchId = state.riskFetchSeq;
 
@@ -351,19 +379,8 @@ async function renderRiskForDate(date) {
   state.tractLayer = L.geoJSON(fc, {
     renderer: state.canvasRenderer,
     style: (feature) => styleTract(feature),
-    onEachFeature: (feature, layer) => {
-      const p = feature.properties || {};
-      layer.bindPopup(
-        `<strong>Tract ${p.GEOID ?? "N/A"}</strong><br/>Samples: ${formatInt.format(
-          safeNum(p.samples),
-        )}<br/>Mean risk: ${safeNum(p.risk_score_mean).toFixed(
-          4,
-        )}<br/>Mean hazard: ${safeNum(p.hazard_index_mean).toFixed(
-          4,
-        )}<br/>EAL sum: ${formatMoney.format(safeNum(p.risk_eal_usd_sum))}`,
-      );
-    },
   }).addTo(state.map);
+  state.activeTractDate = date;
 
   renderRiskLegend();
   setStatus(
@@ -383,7 +400,9 @@ function styleTract(feature) {
 
 function renderWindowChart() {
   const labels = state.windowDates;
-  const risk = labels.map((d) => safeNum(state.dailyByDate.get(d)?.risk_score_mean));
+  const riskMeanM = labels.map(
+    (d) => safeNum(state.dailyByDate.get(d)?.risk_score_mean) / 1_000_000,
+  );
   const hazard = labels.map((d) => safeNum(state.dailyByDate.get(d)?.hazard_index_mean));
   const ealM = labels.map((d) => safeNum(state.dailyByDate.get(d)?.risk_eal_usd_sum) / 1_000_000);
 
@@ -399,9 +418,9 @@ function renderWindowChart() {
       labels,
       datasets: [
         {
-          label: "Risk (H×E×V)",
-          data: risk,
-          yAxisID: "yRisk",
+          label: "Mean Risk (USD millions/day)",
+          data: riskMeanM,
+          yAxisID: "yMoney",
           borderColor: "#c0392b",
           backgroundColor: "rgba(192,57,43,0.12)",
           borderWidth: 2,
@@ -411,7 +430,7 @@ function renderWindowChart() {
         {
           label: "Hazard Index",
           data: hazard,
-          yAxisID: "yRisk",
+          yAxisID: "yHazard",
           borderColor: "#1f6f8b",
           backgroundColor: "rgba(31,111,139,0.12)",
           borderWidth: 1.8,
@@ -421,7 +440,7 @@ function renderWindowChart() {
         {
           label: "EAL (USD millions)",
           data: ealM,
-          yAxisID: "yEal",
+          yAxisID: "yMoney",
           borderColor: "#a45a00",
           backgroundColor: "rgba(164,90,0,0.13)",
           borderWidth: 1.8,
@@ -430,8 +449,8 @@ function renderWindowChart() {
         },
         {
           label: "Selected Day",
-          data: labels.map((_, idx) => (idx === state.currentOffset ? risk[idx] : null)),
-          yAxisID: "yRisk",
+          data: labels.map((_, idx) => (idx === state.currentOffset ? riskMeanM[idx] : null)),
+          yAxisID: "yMoney",
           borderColor: "#111",
           backgroundColor: "#111",
           pointRadius: 5,
@@ -446,11 +465,17 @@ function renderWindowChart() {
         legend: { position: "bottom", labels: { boxWidth: 14 } },
       },
       scales: {
-        yRisk: { type: "linear", position: "left", title: { display: true, text: "Risk / Hazard" } },
-        yEal: {
+        yHazard: {
+          type: "linear",
+          position: "left",
+          title: { display: true, text: "Hazard Index" },
+          min: 0,
+          max: 1,
+        },
+        yMoney: {
           type: "linear",
           position: "right",
-          title: { display: true, text: "EAL (USD millions)" },
+          title: { display: true, text: "Risk / EAL (USD millions)" },
           grid: { drawOnChartArea: false },
         },
       },
@@ -480,29 +505,29 @@ function updateDailyMetrics(date) {
   }
   ui.metricSamples.textContent = formatInt.format(Number(row.samples || 0));
   ui.metricHazard.textContent = safeNum(row.hazard_index_mean).toFixed(4);
-  ui.metricRisk.textContent = safeNum(row.risk_score_mean).toFixed(4);
+  ui.metricRisk.textContent = formatMoney.format(safeNum(row.risk_score_mean));
   ui.metricEal.textContent = formatMoney.format(safeNum(row.risk_eal_usd_sum));
 }
 
 function renderSpreadLegend() {
   const [b1, b2, b3, b4] = state.pointBreaks;
   ui.mapLegend.innerHTML = [
-    legendChip(RISK_COLORS[0], `≤ ${b1.toFixed(3)}`),
-    legendChip(RISK_COLORS[1], `${b1.toFixed(3)} - ${b2.toFixed(3)}`),
-    legendChip(RISK_COLORS[2], `${b2.toFixed(3)} - ${b3.toFixed(3)}`),
-    legendChip(RISK_COLORS[3], `${b3.toFixed(3)} - ${b4.toFixed(3)}`),
-    legendChip(RISK_COLORS[4], `> ${b4.toFixed(3)}`),
+    legendChip(RISK_COLORS[0], `≤ ${formatRiskValue(b1)}`),
+    legendChip(RISK_COLORS[1], `${formatRiskValue(b1)} - ${formatRiskValue(b2)}`),
+    legendChip(RISK_COLORS[2], `${formatRiskValue(b2)} - ${formatRiskValue(b3)}`),
+    legendChip(RISK_COLORS[3], `${formatRiskValue(b3)} - ${formatRiskValue(b4)}`),
+    legendChip(RISK_COLORS[4], `> ${formatRiskValue(b4)}`),
   ].join("");
 }
 
 function renderRiskLegend() {
   const [b1, b2, b3, b4] = state.tractBreaks;
   ui.mapLegend.innerHTML = [
-    legendChip(RISK_COLORS[0], `Tract risk ≤ ${b1.toFixed(3)}`),
-    legendChip(RISK_COLORS[1], `${b1.toFixed(3)} - ${b2.toFixed(3)}`),
-    legendChip(RISK_COLORS[2], `${b2.toFixed(3)} - ${b3.toFixed(3)}`),
-    legendChip(RISK_COLORS[3], `${b3.toFixed(3)} - ${b4.toFixed(3)}`),
-    legendChip(RISK_COLORS[4], `> ${b4.toFixed(3)}`),
+    legendChip(RISK_COLORS[0], `Tract risk ≤ ${formatRiskValue(b1)}`),
+    legendChip(RISK_COLORS[1], `${formatRiskValue(b1)} - ${formatRiskValue(b2)}`),
+    legendChip(RISK_COLORS[2], `${formatRiskValue(b2)} - ${formatRiskValue(b3)}`),
+    legendChip(RISK_COLORS[3], `${formatRiskValue(b3)} - ${formatRiskValue(b4)}`),
+    legendChip(RISK_COLORS[4], `> ${formatRiskValue(b4)}`),
   ].join("");
 }
 
@@ -591,6 +616,14 @@ function safeNum(value) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function formatRiskValue(value) {
+  const num = safeNum(value);
+  if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
+  if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
+  if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
+  return `$${num.toFixed(0)}`;
 }
 
 function totalSpreadPoints() {

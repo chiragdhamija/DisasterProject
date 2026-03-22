@@ -1,11 +1,11 @@
 {
   "inputs": {
-    "hazard_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/hazard_predictions.csv",
-    "hev_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_features_hev.csv"
+    "hazard_csv": "NextDayWildFireSpr/data/interim/hazard_predictions.csv",
+    "hev_csv": "NextDayWildFireSpr/data/interim/sample_features_hev.csv"
   },
   "formula": {
-    "primary_risk": "risk_score = hazard_index * exposure_index * vulnerability_for_risk",
-    "eal_usd": "risk_eal_usd = hazard_index * asset_value_usd * vulnerability_for_risk",
+    "primary_risk": "risk_score_usd = hazard_index * asset_value_usd * vulnerability_for_risk",
+    "eal_usd": "risk_eal_usd = risk_score_usd",
     "vulnerability_imputation": {
       "strategy": "median_fill_if_missing",
       "value": 0.5394,
@@ -18,29 +18,30 @@
     "vulnerability_weight": 0.2
   },
   "outputs": {
-    "sample_risk_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_risk_scores.csv",
-    "tract_risk_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/tract_risk_summary.csv",
-    "date_risk_csv": "/home/chirag/Desktop/SEM 8/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/date_risk_summary.csv",
+    "sample_risk_csv": "NextDayWildFireSpr/data/interim/sample_risk_scores.csv",
+    "tract_risk_csv": "NextDayWildFireSpr/data/interim/tract_risk_summary.csv",
+    "date_risk_csv": "NextDayWildFireSpr/data/interim/date_risk_summary.csv",
     "rows_sample": 2783,
     "rows_tract": 334,
     "rows_date": 199
   },
   "distributions": {
-    "risk_score_mean": 0.01793026415794542,
+    "risk_score_mean": 31667872.219855614,
     "risk_score_weighted_mean": 0.2600629093560793,
-    "risk_score_p95": 0.05231897148446535,
-    "risk_hev_product_mean": 0.01793026415794542,
-    "risk_eal_usd_total": 27320949901.721268,
+    "risk_score_p95": 118892574.19658086,
+    "risk_hev_product_mean": 31667872.219855614,
+    "risk_eal_usd_total": 87751673921.21991,
     "expected_property_loss_usd_weighted_total": 394742449515.5647,
-    "expected_property_loss_usd_hev_total": 27320949901.721268,
-    "expected_population_affected_total": 171751.971784037,
-    "expected_housing_units_affected_total": 84256.96855514344,
+    "expected_property_loss_usd_hev_total": 87751673921.21991,
+    "expected_population_affected_total": 551264.4840842581,
+    "expected_housing_units_affected_total": 283823.72135680175,
     "risk_tier_counts": {
-      "moderate": 557,
-      "very_low": 557,
-      "very_high": 557,
-      "high": 556,
-      "low": 556
+      "very_low": 555,
+      "moderate": 554,
+      "low": 554,
+      "very_high": 554,
+      "high": 554,
+      "missing": 12
     },
     "null_rates": {
       "hazard_index": 0.0,
