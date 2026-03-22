@@ -48,10 +48,8 @@ const ui = {
   dateLabel: document.getElementById("dateLabel"),
   statusText: document.getElementById("statusText"),
   mapLegend: document.getElementById("mapLegend"),
-  metricSamples: document.getElementById("metricSamples"),
   metricHazard: document.getElementById("metricHazard"),
-  metricRisk: document.getElementById("metricRisk"),
-  metricEal: document.getElementById("metricEal"),
+  metricTotalRisk: document.getElementById("metricTotalRisk"),
 };
 
 const formatInt = new Intl.NumberFormat("en-US");
@@ -500,11 +498,7 @@ function styleTract(feature) {
 
 function renderWindowChart() {
   const labels = state.windowDates;
-  const riskMeanM = labels.map(
-    (d) => safeNum(state.dailyByDate.get(d)?.risk_score_mean) / 1_000_000,
-  );
-  const hazard = labels.map((d) => safeNum(state.dailyByDate.get(d)?.hazard_index_mean));
-  const ealM = labels.map((d) => safeNum(state.dailyByDate.get(d)?.risk_eal_usd_sum) / 1_000_000);
+  const totalRiskM = labels.map((d) => safeNum(state.dailyByDate.get(d)?.risk_eal_usd_sum) / 1_000_000);
 
   if (state.chart) {
     state.chart.destroy();
@@ -518,9 +512,8 @@ function renderWindowChart() {
       labels,
       datasets: [
         {
-          label: "Mean Risk per Sample (USD millions)",
-          data: riskMeanM,
-          yAxisID: "yMoney",
+          label: "Total Risk (USD millions/day)",
+          data: totalRiskM,
           borderColor: "#c0392b",
           backgroundColor: "rgba(192,57,43,0.12)",
           borderWidth: 2,
@@ -528,29 +521,8 @@ function renderWindowChart() {
           pointRadius: 2,
         },
         {
-          label: "Hazard Index",
-          data: hazard,
-          yAxisID: "yHazard",
-          borderColor: "#1f6f8b",
-          backgroundColor: "rgba(31,111,139,0.12)",
-          borderWidth: 1.8,
-          tension: 0.2,
-          pointRadius: 2,
-        },
-        {
-          label: "EAL Total (USD millions/day)",
-          data: ealM,
-          yAxisID: "yMoney",
-          borderColor: "#a45a00",
-          backgroundColor: "rgba(164,90,0,0.13)",
-          borderWidth: 1.8,
-          tension: 0.2,
-          pointRadius: 2,
-        },
-        {
           label: "Selected Day",
-          data: labels.map((_, idx) => (idx === state.currentOffset ? riskMeanM[idx] : null)),
-          yAxisID: "yMoney",
+          data: labels.map((_, idx) => (idx === state.currentOffset ? totalRiskM[idx] : null)),
           borderColor: "#111",
           backgroundColor: "#111",
           pointRadius: 5,
@@ -565,18 +537,9 @@ function renderWindowChart() {
         legend: { position: "bottom", labels: { boxWidth: 14 } },
       },
       scales: {
-        yHazard: {
+        y: {
           type: "linear",
-          position: "left",
-          title: { display: true, text: "Hazard Index" },
-          min: 0,
-          max: 1,
-        },
-        yMoney: {
-          type: "linear",
-          position: "right",
-          title: { display: true, text: "USD millions" },
-          grid: { drawOnChartArea: false },
+          title: { display: true, text: "USD millions/day" },
         },
       },
     },
@@ -587,9 +550,9 @@ function updateChartSelection() {
   if (!state.chart) {
     return;
   }
-  const risk = state.chart.data.datasets[0].data;
-  state.chart.data.datasets[3].data = state.windowDates.map((_, idx) =>
-    idx === state.currentOffset ? risk[idx] : null,
+  const totalRisk = state.chart.data.datasets[0].data;
+  state.chart.data.datasets[1].data = state.windowDates.map((_, idx) =>
+    idx === state.currentOffset ? totalRisk[idx] : null,
   );
   state.chart.update("none");
 }
@@ -597,16 +560,12 @@ function updateChartSelection() {
 function updateDailyMetrics(date) {
   const row = state.dailyByDate.get(date);
   if (!row) {
-    ui.metricSamples.textContent = "-";
     ui.metricHazard.textContent = "-";
-    ui.metricRisk.textContent = "-";
-    ui.metricEal.textContent = "-";
+    ui.metricTotalRisk.textContent = "-";
     return;
   }
-  ui.metricSamples.textContent = formatInt.format(Number(row.samples || 0));
   ui.metricHazard.textContent = safeNum(row.hazard_index_mean).toFixed(4);
-  ui.metricRisk.textContent = formatMoney.format(safeNum(row.risk_score_mean));
-  ui.metricEal.textContent = formatMoney.format(safeNum(row.risk_eal_usd_sum));
+  ui.metricTotalRisk.textContent = formatMoney.format(safeNum(row.risk_eal_usd_sum));
 }
 
 function renderSpreadLegend() {

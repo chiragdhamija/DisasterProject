@@ -66,23 +66,15 @@
           <h2>Daily Snapshot</h2>
           <div class="metric-grid">
             <article class="metric-card">
-              <span>Samples</span>
-              <strong id="metricSamples">-</strong>
-            </article>
-            <article class="metric-card">
               <span>Mean Hazard</span>
               <strong id="metricHazard">-</strong>
             </article>
             <article class="metric-card">
-              <span>Mean Risk (USD/day/sample)</span>
-              <strong id="metricRisk">-</strong>
-            </article>
-            <article class="metric-card">
-              <span>EAL Total (USD/day)</span>
-              <strong id="metricEal">-</strong>
+              <span>Total Risk (USD/day)</span>
+              <strong id="metricTotalRisk">-</strong>
             </article>
           </div>
-          <h2>Risk Across Days</h2>
+          <h2>Total Risk Across Days</h2>
           <div class="chart-wrap">
             <canvas id="riskChart"></canvas>
           </div>
@@ -90,7 +82,7 @@
             Selected base day shows observed fire (ground truth) only.
             Next days show predicted spread samples.
             Trajectories are shown only for predicted days as cluster-linked paths.
-            Mean Risk is per sample; EAL Total is summed over all samples for that day.
+            Total Risk (USD/day) is the summed daily risk (H x E x V) over valid mapped samples.
           </p>
         </aside>
       </main>
