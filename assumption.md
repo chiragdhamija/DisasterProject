@@ -73,6 +73,19 @@
 - Tract assignment for sample points:
   - Primary method: polygon intersection.
   - Fallback method: nearest tract for non-intersecting points.
+- Risk fusion primary formula follows slide objective:
+  - `risk_score = hazard_index * exposure_index * vulnerability_for_risk`
+  - Exposure index is composed from scaled population density, housing density, median home value, and road proximity.
+  - Vulnerability is sourced from SVI (`svi_rpl_themes`) and median-imputed when missing.
+  - A weighted score is retained only as secondary comparison (`risk_score_weighted`).
+- Monetary risk fields are currently **proxy estimates** (not insured-loss model outputs):
+  - `asset_value_usd = acs_housing_units * acs_median_home_value`
+  - `risk_eal_usd = hazard_index * asset_value_usd * vulnerability_for_risk`
+  - `expected_property_loss_usd_hev = risk_eal_usd`
+  - `expected_property_loss_usd_weighted = risk_score_weighted * asset_value_usd`
+  - `expected_population_affected = risk_score * acs_population`
+  - `expected_housing_units_affected = risk_score * acs_housing_units`
+- ACS invalid/sentinel non-positive values are treated as missing before monetary calculations.
 
 ## What Is Explicitly NOT Used in Canonical Hazard Training
 - External exposure/vulnerability feature channels are not included as model input.

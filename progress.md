@@ -127,9 +127,81 @@ Build a **hazard-first wildfire pipeline**:
   - It remains marginally below historical best (`F1=0.6518`), difference `0.0011`.
   - Practical decision: treat current checkpoint as acceptable and proceed to hazard inference + risk fusion.
 
+## Phase 2 Implemented: Hazard Inference + Risk Fusion
+
+### A) Hazard Inference Script
+- Added script:
+  - `NextDayWildFireSpr/tools/infer_hazard_scores.py`
+- What it does:
+  - Loads canonical dataset pickles (`train/validation/test`)
+  - Loads trained `U_Net` checkpoint
+  - Runs inference and writes per-sample hazard outputs:
+    - `hazard_prob_mean`, `hazard_prob_p95`, `hazard_prob_max`, `hazard_pred_fire_frac`
+  - Joins prediction rows to `sample_index.csv` metadata (`sample_id`, date, lon/lat)
+  - Writes global pixel metric summary at chosen threshold
+
+### B) HEV Feature Table Build
+- Executed:
+  - `NextDayWildFireSpr/tools/build_hev_features.py`
+- Output:
+  - `NextDayWildFireSpr/data/interim/sample_features_hev.csv` (`2783` rows)
+  - `NextDayWildFireSpr/data/interim/sample_features_hev_summary.json`
+
+### C) Risk Fusion Script
+- Added script:
+  - `NextDayWildFireSpr/tools/fuse_risk_scores.py`
+- Fusion logic:
+  - Hazard index from `hazard_prob_mean` (`0..1`)
+  - Exposure index from scaled exposure features:
+    - population density, housing density, median home value, road proximity
+  - Vulnerability index from `svi_rpl_themes`
+  - Final primary risk score (slide-aligned):
+    - `risk_score = hazard * exposure * vulnerability`
+  - Weighted score retained as secondary comparison:
+    - `risk_score_weighted = 0.5 * hazard + 0.3 * exposure + 0.2 * vulnerability`
+  - Risk tier classification into 5 quantile bands:
+    - `very_low`, `low`, `moderate`, `high`, `very_high`
+
+### D) Outputs Generated (Current)
+- Hazard:
+  - `NextDayWildFireSpr/data/interim/hazard_predictions.csv` (`2783` rows)
+  - `NextDayWildFireSpr/data/interim/hazard_predictions_summary.json`
+- Risk:
+  - `NextDayWildFireSpr/data/interim/sample_risk_scores.csv` (`2783` rows)
+  - `NextDayWildFireSpr/data/interim/tract_risk_summary.csv` (`334` tracts)
+  - `NextDayWildFireSpr/data/interim/date_risk_summary.csv` (`199` dates)
+  - `NextDayWildFireSpr/data/interim/risk_fusion_summary.json`
+
+### E) Current Phase-2 Metrics Snapshot
+- Hazard inference summary:
+  - `rows=2783`, `threshold=0.5`
+  - positive-class pixel `F1=0.2358`, `IoU=0.1336`, `Accuracy=0.9480`, `Brier=0.0395`
+  - macro (training-like) across all splits: `macro_F1=0.6044`, `macro_IoU=0.5406`
+  - validation split macro (training-comparable): `macro_F1=0.6508`, `macro_IoU=0.5836`
+  - Note: low positive-class F1 is expected under heavy class imbalance; training logs use macro-style metrics.
+- Risk summary:
+  - `risk_score_mean=0.01793`, `risk_score_p95=0.05232`
+  - tier counts balanced by quantile design
+
+### F) Monetary Risk Outputs (Implemented)
+- Added explicit economic-impact fields in risk fusion (`tools/fuse_risk_scores.py`):
+  - `asset_value_usd = acs_housing_units * acs_median_home_value`
+  - `risk_eal_usd = hazard * asset_value_usd * vulnerability`
+  - `expected_property_loss_usd_hev = risk_eal_usd`
+  - `expected_property_loss_usd_weighted = risk_score_weighted * asset_value_usd` (secondary)
+  - `expected_population_affected = risk_score * acs_population`
+  - `expected_housing_units_affected = risk_score * acs_housing_units`
+- These fields are now present in:
+  - `sample_risk_scores.csv`
+  - `tract_risk_summary.csv` (sum aggregations)
+  - `date_risk_summary.csv` (sum aggregations)
+- Current totals (`risk_fusion_summary.json`):
+  - `risk_eal_usd_total = 27,320,949,901.72`
+  - `expected_property_loss_usd_weighted_total = 394,742,449,515.56` (secondary)
+  - `expected_population_affected_total = 171,751.97`
+  - `expected_housing_units_affected_total = 84,256.97`
+
 ## Next Steps
-1. Re-run with milder regularization and flips off by default (new `--random_flip` flag is optional).
-2. Freeze best hazard model and generate hazard probabilities per sample/tile.
-3. Build exposure and vulnerability indices from external layers.
-4. Fuse `Hazard + Exposure + Vulnerability` into final California risk map.
-5. Build minimal frontend for map visualization/reporting.
+1. Build minimal frontend for California risk map visualization (sample + tract layers).
+2. Add scenario analysis view (for example reduced vulnerability case and delta-EAL).
+3. Finalize report figures/tables from `sample_risk_scores`, `tract_risk_summary`, and `date_risk_summary`.

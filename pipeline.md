@@ -8,7 +8,8 @@ Final risk map is produced in a separate step:
 - Exposure from external socioeconomic/infrastructure layers
 - Vulnerability from SVI/ACS indicators
 
-`Risk = f(Hazard, Exposure, Vulnerability)` (fusion done after hazard inference).
+Primary risk fusion follows:
+`Risk = Hazard × Exposure × Vulnerability` (fusion done after hazard inference).
 
 ## Model Input
 Current training dataset:
@@ -87,7 +88,25 @@ What it does:
   - `sample_index.csv` (array index to sample_id/date/lon/lat mapping)
 
 ## Risk Mapping Stage (Post-Training)
-1. Run hazard inference to get hazard probability map/index.
-2. Compute exposure index from external datasets.
-3. Compute vulnerability index from external datasets.
-4. Fuse into composite risk score and classify tiers for reporting/visualization.
+1. Run hazard inference to get hazard probability/index.
+   - Script: `NextDayWildFireSpr/tools/infer_hazard_scores.py`
+   - Output: `data/interim/hazard_predictions.csv`
+2. Build HEV feature table from external datasets.
+   - Script: `NextDayWildFireSpr/tools/build_hev_features.py`
+   - Output: `data/interim/sample_features_hev.csv`
+3. Fuse hazard + exposure + vulnerability into risk score.
+   - Script: `NextDayWildFireSpr/tools/fuse_risk_scores.py`
+   - Primary formula: `risk_score = hazard_index * exposure_index * vulnerability_for_risk`
+   - Monetary EAL proxy: `risk_eal_usd = hazard_index * asset_value_usd * vulnerability_for_risk`
+   - Outputs:
+     - `data/interim/sample_risk_scores.csv`
+     - `data/interim/tract_risk_summary.csv`
+     - `data/interim/date_risk_summary.csv`
+   - Includes monetary/impact proxy fields:
+      - `asset_value_usd`
+      - `risk_eal_usd`
+      - `expected_property_loss_usd_weighted`
+      - `expected_property_loss_usd_hev`
+      - `expected_population_affected`
+      - `expected_housing_units_affected`
+4. Use tract/date/sample outputs for reporting and frontend map layers.

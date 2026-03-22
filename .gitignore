@@ -1,7 +1,12 @@
 Ext_Datasets
 .venv
+NextDayWildFireSpr/data/interim
 NextDayWildFireSpr/archive
-NextDayWildFireSpr/data
+NextDayWildFireSpr/data/ndws64_meta_ca
+NextDayWildFireSpr/data/ndws64_meta_full_complete_US_GEE
+NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard
+NextDayWildFireSpr/data/next-day-wildfire-spread-original-old
 NextDayWildFireSpr/savedModels
+
 __pycache__/
 *.pyc

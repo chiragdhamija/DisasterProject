@@ -126,3 +126,31 @@ python trainModel-II.py --epochs 10 2>&1 | tee train_hazard_10ep.log
 ```bash
 grep -E "Using all channels|num_input_channels|Validation -|F1 Score|Best epoch|Best F1 score|Traceback|RuntimeError" train_hazard_10ep.log
 ```
+
+
+
+Phase 2 is done and executed end-to-end.
+
+1. Implemented hazard inference script: [infer_hazard_scores.py](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/tools/infer_hazard_scores.py)
+2. Implemented risk fusion script: [fuse_risk_scores.py](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/tools/fuse_risk_scores.py)
+3. Updated docs/logs: [progress.md](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/progress.md), [pipeline.md](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/pipeline.md), [assumption.md](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/assumption.md)
+
+Generated outputs:
+1. Hazard predictions: [hazard_predictions.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/hazard_predictions.csv)
+2. Hazard summary: [hazard_predictions_summary.json](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/hazard_predictions_summary.json)
+3. HEV features: [sample_features_hev.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_features_hev.csv)
+4. Final sample risk: [sample_risk_scores.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/sample_risk_scores.csv)
+5. Tract risk summary: [tract_risk_summary.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/tract_risk_summary.csv)
+6. Date risk summary: [date_risk_summary.csv](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/date_risk_summary.csv)
+7. Risk fusion summary: [risk_fusion_summary.json](/home/chirag/Desktop/SEM%208/Disaster/DisasterProject/Wildfire-Spread-Prediction/NextDayWildFireSpr/data/interim/risk_fusion_summary.json)
+
+Rerun commands anytime:
+```bash
+cd NextDayWildFireSpr
+
+../.venv/bin/python tools/build_hev_features.py
+../.venv/bin/python tools/infer_hazard_scores.py --split all --batch_size 64 --weights savedModels/model-U_Net-bestF1Score-Rank-0.weights
+../.venv/bin/python tools/fuse_risk_scores.py
+```
+
+Next phase ready: I can now build the minimal frontend to visualize California sample/tract risk maps from these CSV outputs.
