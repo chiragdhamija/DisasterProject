@@ -96,22 +96,33 @@ From `channels_metadata.json`:
   - Validation: `(5525, 15, 64, 64)` labels `(5525, 64, 64)`
   - Test: `(5397, 15, 64, 64)` labels `(5397, 64, 64)`
 
-Channel order:
-1. `elevation`
-2. `th`
-3. `vs`
-4. `tmmn`
-5. `tmmx`
-6. `sph`
-7. `pr`
-8. `pdsi`
-9. `NDVI`
-10. `population`
-11. `erc`
-12. `PrevFireMask`
-13. `meta_lon_z`
-14. `meta_lat_z`
-15. `meta_day_of_year_z`
+Channel order and definitions (sourced):
+
+| # | Channel | Definition (exact meaning used) | Origin |
+|---:|---|---|---|
+| 1 | `elevation` | Elevation (meters) from DEM | `USGS/SRTMGL1_003` band `elevation` |
+| 2 | `th` | Wind direction (degrees) | `IDAHO_EPSCOR/GRIDMET` band `th` |
+| 3 | `vs` | Wind velocity at 10m (m/s) | `IDAHO_EPSCOR/GRIDMET` band `vs` |
+| 4 | `tmmn` | Minimum temperature (Kelvin) | `IDAHO_EPSCOR/GRIDMET` band `tmmn` |
+| 5 | `tmmx` | Maximum temperature (Kelvin) | `IDAHO_EPSCOR/GRIDMET` band `tmmx` |
+| 6 | `sph` | Specific humidity (mass fraction) | `IDAHO_EPSCOR/GRIDMET` band `sph` |
+| 7 | `pr` | Precipitation amount (mm, daily total) | `IDAHO_EPSCOR/GRIDMET` band `pr` |
+| 8 | `pdsi` | Palmer Drought Severity Index | `GRIDMET/DROUGHT` band `pdsi` |
+| 9 | `NDVI` | Normalized Difference Vegetation Index | `NOAA/VIIRS/001/VNP13A1` band `NDVI` |
+| 10 | `population` | Estimated number of persons per square kilometer | renamed from `CIESIN/GPWv411/GPW_Population_Density` band `population_density` |
+| 11 | `erc` | Energy release component (NFDRS fire danger index) | `IDAHO_EPSCOR/GRIDMET` band `erc` |
+| 12 | `PrevFireMask` | Previous-day fire mask feature (derived from MODIS fire mask classes; prior-day max window, then binarized in canonical build) | derived from `MODIS/006/MOD14A1` `FireMask` (class definitions aligned with `MODIS/061/MOD14A1`) |
+| 13 | `meta_lon_z` | Z-score normalized sample longitude | derived metadata channel |
+| 14 | `meta_lat_z` | Z-score normalized sample latitude | derived metadata channel |
+| 15 | `meta_day_of_year_z` | Z-score normalized day-of-year from `sample_date` | derived metadata channel |
+
+Definition sources (official Earth Engine catalog pages):
+- SRTM elevation (`USGS/SRTMGL1_003`): https://developers.google.com/earth-engine/datasets/catalog/USGS_SRTMGL1_003
+- GRIDMET meteorology (`IDAHO_EPSCOR/GRIDMET`, for `pr`, `sph`, `th`, `tmmn`, `tmmx`, `vs`, `erc`): https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
+- Drought index (`GRIDMET/DROUGHT`, `pdsi`): https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT
+- VIIRS NDVI (`NOAA/VIIRS/001/VNP13A1`, `NDVI`): https://developers.google.com/earth-engine/datasets/catalog/NOAA_VIIRS_001_VNP13A1
+- Population density (`CIESIN/GPWv411/GPW_Population_Density`, `population_density`): https://developers.google.com/earth-engine/datasets/catalog/CIESIN_GPWv411_GPW_Population_Density
+- MODIS FireMask classes (`MODIS/006/MOD14A1`, used in export; `MODIS/061/MOD14A1` successor): https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MOD14A1 and https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD14A1
 
 ## 3.2 External Datasets (Actually Used)
 All loaded from `Ext_Datasets/`.
