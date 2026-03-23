@@ -1,192 +1,140 @@
-# Dashboard Metric Definitions
+# Dashboard Definitions and Calculations
 
-This file explains the four cards shown in the dashboard:
+This file documents what the current dashboard shows, how each number is computed, and what each map mode represents.
 
-1. `Samples`
-2. `Mean Hazard`
-3. `Mean Risk (USD/day/sample)`
-4. `EAL Total (USD/day)`
+## 1) What the dashboard currently shows
 
-All definitions below are based on the current pipeline outputs:
+Current right-panel cards:
 
-- `NextDayWildFireSpr/data/interim/sample_risk_scores.csv`
-- `NextDayWildFireSpr/data/interim/date_risk_summary.csv`
-- `NextDayWildFireSpr/tools/fuse_risk_scores.py`
+1. `Mean Hazard`
+2. `Total Risk (USD/day)`
 
-## 1) Per-sample quantities (computed first)
+Current chart:
+
+1. `Total Risk Across Days` (line in USD millions/day)
+2. `Selected Day` marker
+
+## 2) Core per-sample quantities
+
+All per-sample values come from `NextDayWildFireSpr/data/interim/sample_risk_scores.csv`.
 
 For each sample tile `i` on date `d`:
 
-### Hazard
-
-- Model outputs pixel probabilities for next-day fire.
-- `hazard_prob_mean_i` = mean predicted probability across the tile.
+- `hazard_prob_mean_i`: model mean next-day fire probability over the tile.
 - `hazard_index_i = clip(hazard_prob_mean_i, 0, 1)`.
-
-### Exposure (monetary base)
-
 - `asset_value_usd_i = acs_housing_units_i * acs_median_home_value_i`.
-- If ACS values are invalid/missing (<= 0), `asset_value_usd_i` becomes `NaN`.
+- `vulnerability_for_risk_i`: SVI-based vulnerability (`svi_rpl_themes`, clipped and filled where needed in fusion).
+- `risk_score_i = hazard_index_i * asset_value_usd_i * vulnerability_for_risk_i`.
+- `risk_eal_usd_i = risk_score_i`.
 
-### Vulnerability
+So in this pipeline, per-sample `risk_score` and per-sample `risk_eal_usd` are numerically identical.
 
-- `vulnerability_index_i` comes from SVI (`svi_rpl_themes`, clipped to `[0,1]`).
-- `vulnerability_for_risk_i` = `vulnerability_index_i` with median fill for missing values.
+## 3) Daily metrics used by frontend
 
-### Risk and EAL (sample level)
+Daily rows come from `NextDayWildFireSpr/frontend/data/daily_risk_summary.json` (built from `date_risk_summary.csv`).
 
-- Primary risk formula used:
-  - `risk_score_i = hazard_index_i * asset_value_usd_i * vulnerability_for_risk_i`
-- EAL alias:
-  - `risk_eal_usd_i = risk_score_i`
+For selected day `d`:
 
-So in this pipeline, per-sample `risk_score` and `risk_eal_usd` are numerically equal.
+- `Mean Hazard` card uses `hazard_index_mean_d = mean(hazard_index_i)` over samples on day `d`.
+- `Total Risk (USD/day)` card uses `risk_eal_usd_sum_d = sum(risk_eal_usd_i)` over valid samples on day `d`.
 
-## 2) Daily dashboard cards (aggregated by date)
+Important detail:
 
-For a selected date `d`, using all rows from `sample_risk_scores.csv` where `sample_date == d`:
+- The total is a sum over valid risk rows. Rows with missing monetary inputs produce null risk and do not contribute to the sum.
 
-### `Samples`
+## 4) Meaning of sample tile
 
-- `Samples_d = count(sample_id)`
+A sample tile is one `64 x 64` spatial patch at one date.
 
-This is the number of sample tiles available for that date.
+Each tile has:
 
-### `Mean Hazard`
+- hazard-model inputs (weather, terrain, vegetation, previous fire, metadata channels),
+- location/date metadata (`sample_lon`, `sample_lat`, `sample_date`),
+- ground-truth fire fraction and model-predicted fire fraction.
 
-- `MeanHazard_d = mean(hazard_index_i)`
+## 5) Map mode: Daily Spread + Trajectory
 
-Unit: unitless probability-like index in `[0,1]`.
+This mode combines spread points and trajectory lines.
 
-### `Mean Risk (USD/day/sample)`
+Spread point rendering logic:
 
-- `MeanRisk_d = mean(risk_score_i)`
+- Base day `t` (selected date): shows only observed fire points where `gt_fire_frac > 0`.
+- Future window days (`t+1`, `t+2` by default horizon): shows only predicted spread points where `hazard_pred_fire_frac > 0`.
 
-Unit: USD per sample for that day.
+Point styling:
 
-### `EAL Total (USD/day)`
+- Base day points are colored/sized by observed fire fraction.
+- Future-day points are colored by risk bins and sized by predicted fire fraction.
 
-- `EALTotal_d = sum(risk_eal_usd_i)`
-- Since `risk_eal_usd_i = risk_score_i`, this is also:
-  - `sum(risk_score_i)`
+Trajectory construction:
 
-Unit: total expected loss across all samples for that day.
+- Built only from predicted-fire-positive points.
+- Daily points are clustered to centroids (`cluster_radius_deg = 0.30`).
+- Centroids are linked across dates (`link_radius_deg = 0.90`) to create multiple trajectories.
+- Frontend renders trajectory segments only for days after base date.
 
-## 3) Mean Risk vs EAL Total
+## 6) Map mode: Tract Risk Map
 
-- `Mean Risk` is an average per sample.
-- `EAL Total` is the total over all samples.
+This mode shows tract-level choropleth for selected date.
 
-Conceptually:
+Per-date, per-tract aggregation (from sample-level rows mapped by `GEOID`):
 
-- `EALTotal_d ~= MeanRisk_d * number_of_valid_risk_samples_d`
+- `risk_score_mean`
+- `hazard_index_mean`
+- `risk_eal_usd_sum`
+- `samples`
 
-It may not equal `MeanRisk_d * Samples_d` exactly when some rows have missing `risk_score` (for example missing/invalid ACS asset inputs), because pandas mean/sum ignore `NaN` values.
+Choropleth color is based on `risk_score_mean` with quantile-style breaks for that date.
 
-## 4) Why `Samples` matters
+## 7) Time-window and API behavior
 
-- Higher `Samples` means daily metrics are estimated from more tiles and are more stable.
-- Lower `Samples` means the daily aggregates can be more sensitive to a few tiles.
+Dashboard uses the local API server (`serve_frontend_api.py`) so heavy data filtering happens in backend.
 
-## 4.1) What is a sample tile?
+Endpoints:
 
-A sample tile is one `64 x 64` spatial patch for a specific date.
+1. `/api/meta`
+2. `/api/window?date=YYYY-MM-DD&horizon=H`
+3. `/api/tract-risk?date=YYYY-MM-DD`
 
-Each tile carries:
+Window logic:
 
-- model input channels (weather, vegetation, terrain, previous fire, etc.),
-- metadata (`sample_lon`, `sample_lat`, `sample_date`),
-- label/prediction for wildfire spread in that patch.
+- Default horizon is `2`, so window is three dates: `[t, t+1, t+2]`.
+- `t+1` and `t+2` are next available sampled dates, not guaranteed strict calendar +1/+2 if dates are missing.
 
-So if the dashboard shows `Samples = 200` for a date, the day-level metrics are aggregated from 200 such `64 x 64` patches.
+## 8) UI controls
 
-## 5) Map semantics (current)
+- `Base Date`: anchor date `t` from available sampled dates.
+- `Slider`: moves within loaded window dates.
+- `Play` and `Speed`: animate slider across loaded window.
+- `Map View`: switch between spread/trajectory and tract-risk choropleth.
 
-- Base selected day (`t`): map shows **observed fire only** using ground-truth fire fraction.
-- Next days (`t+1`, `t+2` in current window): map shows **predicted spread**.
-- Trajectories are built from predicted-fire-positive samples only.
+## 9) Hazard model input channels (full forms)
 
-## 6) Dashboard Controls and Time Window
+These are the 15 channels used in hazard training/inference, matching the current hazard dataset:
 
-The dashboard works on a short window anchored at a selected base date.
-
-### Base Date (Available)
-
-- You choose a base date `t` from available sampled dates.
-- The API returns a window (default horizon `2`): `[t, t+1, t+2]` in available-date order.
-
-### Slider
-
-- Moves within the loaded window dates.
-- Each slider position updates map + cards + chart marker for that date.
-
-### Play / Speed
-
-- `Play` animates the slider through the current window.
-- `Speed` changes animation interval (slow/normal/fast).
-
-### Status Text
-
-- Shows current load state (window/tract layer fetch messages).
-
-## 7) Map View: Daily Spread + Trajectory
-
-This mode combines point-level wildfire spread display and trajectory lines.
-
-### Daily Spread points
-
-- On base day (`t`): points are shown only where `gt_fire_frac > 0` (observed fire).
-- On future days (`t+1`, `t+2`): points are shown only where `hazard_pred_fire_frac > 0` (predicted fire).
-
-### Point styling
-
-- Base day points:
-  - color reflects observed fire fraction bins,
-  - marker size scales with observed fire fraction.
-- Predicted-day points:
-  - color reflects risk bins (from `risk_score`),
-  - marker size scales with predicted fire fraction.
-
-### Trajectory lines
-
-- Built from predicted-fire-positive points only.
-- Per day, positive points are clustered to local centroids.
-- Across days, nearest clusters are linked to form multiple trajectories.
-- In the viewer, trajectories are displayed only for dates after base day.
-
-## 8) Map View: Tract Risk Map
-
-This mode shows choropleth risk at census-tract level for the selected date.
-
-### Tract aggregation (per date, per GEOID)
-
-- `risk_score_mean` = mean of sample `risk_score` inside tract.
-- `hazard_index_mean` = mean sample hazard index inside tract.
-- `risk_eal_usd_sum` = sum of sample EAL in tract.
-- `samples` = number of samples mapped to that tract/date.
-
-### Coloring
-
-- Tracts are color-binned by `risk_score_mean` quantile-style breaks for that date.
-
-## 9) Right Panel: Daily Snapshot + Risk Across Days
-
-### Daily Snapshot cards
-
-- `Samples`: total sample count on selected date.
-- `Mean Hazard`: average `hazard_index` on selected date.
-- `Mean Risk (USD/day/sample)`: average `risk_score` on selected date.
-- `EAL Total (USD/day)`: sum of `risk_eal_usd` on selected date.
-
-### Risk Across Days chart
-
-- Line 1: mean risk per sample (USD millions).
-- Line 2: mean hazard index.
-- Line 3: EAL total (USD millions/day).
-- Marker: currently selected day in the loaded window.
-
-## 10) Important Interpretation Notes
-
-- This dashboard is based on sampled `64 x 64` tiles, not a dense wall-to-wall raster over California.
-- Dates shown in selector/window are dataset-available sampled dates.
-- `EAL Total` can be much larger than `Mean Risk` because one is a sum and the other is an average.
+1. `elevation`: elevation (m)
+2. `th`: wind direction (degrees)
+3. `vs`: wind speed at 10m (m/s)
+4. `tmmn`: minimum temperature (K)
+5. `tmmx`: maximum temperature (K)
+6. `sph`: specific humidity (mass fraction)
+7. `pr`: precipitation (mm, daily)
+8. `pdsi`: Palmer Drought Severity Index
+9. `NDVI`: Normalized Difference Vegetation Index
+10. `population`: persons per km² (population density)
+11. `erc`: Energy Release Component (fire danger index)
+12. `PrevFireMask`: previous-day fire mask feature
+13. `meta_lon_z`: z-normalized longitude
+14. `meta_lat_z`: z-normalized latitude
+15. `meta_day_of_year_z`: z-normalized day-of-year
+
+Source catalogs for raw physical channels are listed in `report.md` (official Earth Engine dataset pages).
+
+Direct catalog links:
+
+- https://developers.google.com/earth-engine/datasets/catalog/USGS_SRTMGL1_003
+- https://developers.google.com/earth-engine/datasets/catalog/IDAHO_EPSCOR_GRIDMET
+- https://developers.google.com/earth-engine/datasets/catalog/GRIDMET_DROUGHT
+- https://developers.google.com/earth-engine/datasets/catalog/NOAA_VIIRS_001_VNP13A1
+- https://developers.google.com/earth-engine/datasets/catalog/CIESIN_GPWv411_GPW_Population_Density
+- https://developers.google.com/earth-engine/datasets/catalog/MODIS_006_MOD14A1
