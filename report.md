@@ -119,14 +119,17 @@ All loaded from `Ext_Datasets/`.
 1. `TIGER2020_CaliforniaTractsShapefile/tl_2020_06_tract.shp`
 - Used for tract geometry and attributes:
   - `GEOID`, `NAMELSAD`, `ALAND`, `AWATER`
-- Used in:
-  - sample->tract join
-  - tract-level risk map geometry
+- Purpose in pipeline:
+  - Assign each sample tile to a census tract (spatial identity key).
+  - Provide tract polygons for tract-level risk mapping in dashboard outputs.
 
 2. `CaliforniaRoads_InfraShapefile-CRS_-_Functional_Classification/CRS_-_Functional_Classification.shp`
 - Used to compute nearest road proximity per sample:
   - `road_nearest_dist_m`
   - nearest `RouteID`, `F_System`
+- Purpose in pipeline:
+  - Add infrastructure proximity context to each sample.
+  - Contribute to exposure modeling via road-proximity term in `exposure_index`.
 
 3. `California_Historic_Fire_Perimeters_-6273763535668926275/California_Fire_Perimeters_(all).shp`
 - Used for historical fire context features within buffer:
@@ -134,6 +137,10 @@ All loaded from `Ext_Datasets/`.
   - `past_fire_acres_5y_10km`
   - `days_since_fire_min_5y_10km`
 - Uses `ALARM_DATE`, `GIS_ACRES`, geometry.
+- Purpose in pipeline:
+  - Add local historical-burn context around each sample date/location (5-year lookback, 10 km buffer).
+  - Retained for HEV analysis and future risk/hazard refinement.
+  - Note: these fields are generated in HEV table but are not directly multiplied in final `risk_score = H x E x V`.
 
 4. `acs_2020_exposure.json`
 - ACS API extract fields:
@@ -141,6 +148,9 @@ All loaded from `Ext_Datasets/`.
   - `B25001_001E` -> housing units (`acs_housing_units`)
   - `B25077_001E` -> median home value (`acs_median_home_value`)
 - Joined by GEOID built from (`state`,`county`,`tract`).
+- Purpose in pipeline:
+  - Provide tract socioeconomic exposure values (population, housing stock, median home value).
+  - Supply monetary exposure proxy (`asset_value_usd`) used in final risk equation.
 
 5. `SVI_2020_CaliforniaTract.csv`
 - SVI fields used:
@@ -148,10 +158,23 @@ All loaded from `Ext_Datasets/`.
   - `RPL_THEME1`..`RPL_THEME4` (retained)
 - Mapped to:
   - `svi_rpl_themes`, `svi_rpl_theme1`..`svi_rpl_theme4`
+- Purpose in pipeline:
+  - Provide tract-level vulnerability signal.
+  - Used as primary vulnerability term in risk fusion (`vulnerability_index`, then `vulnerability_for_risk`).
 
 ## 3.3 External Dataset Present but Not Used in Final Pipeline
 - `Ext_Datasets/CAL-FIRE_OFFICIAL_FIREPARAMS/fire24_1.gdb`
 - It is present in storage but is not referenced by final scripts.
+
+## 3.4 Generated Data Volume (Final Build Snapshot)
+Measured from current workspace outputs:
+
+- `NextDayWildFireSpr/data/ndws64_meta_ca`: `7,816,771,334` bytes (`~7.817 GB`, `~7.280 GiB`)
+- `NextDayWildFireSpr/data/next-day-wildfire-spread-ca-hazard`: `7,764,842,113` bytes (`~7.765 GB`, `~7.232 GiB`)
+- `NextDayWildFireSpr/data/interim`: `936,463,523` bytes (`~0.936 GB`, `~0.872 GiB`)
+- `NextDayWildFireSpr/frontend/data`: `47,952,558` bytes (`~0.048 GB`, `~0.045 GiB`)
+
+Total generated footprint across these output groups: `~16.566 GB` (`~15.429 GiB`).
 
 ---
 
@@ -180,11 +203,20 @@ Per `window_start` (1-day prediction target):
 - `FireMask`: current 1-day max fire mask.
 - Detection mask for sampling: `detection = clamp(FireMask,6,7)-6`.
 
+Concrete temporal ranges used per sample day `t`:
+- Drought (`GRIDMET/DROUGHT`): median over `[t-5, t)`
+- Vegetation (`NOAA/VIIRS/001/VNP13A1`): median over `[t-8, t)`
+- Weather (`IDAHO_EPSCOR/GRIDMET`): median over `[t-2, t)`
+- Previous fire (`MODIS/006/MOD14A1`): max over `[t-1, t)`
+- Target fire label (`MODIS/006/MOD14A1`): max over `[t, t+1)`
+- Elevation (`USGS/SRTMGL1_003`) and population (`CIESIN/GPWv411/GPW_Population_Density`) are static in this workflow.
+
 ### 4.3 Sampling Logic
 - Tile kernel: `64 x 64`
 - Sampling resolution: default 1000m (`sampling_scale`)
 - Stratified sampling on `detection` class.
 - For days with no positive fire pixels, script still samples negatives (`no_fire_samples_per_day`) so the day is retained.
+- Final export date range used for full build: `2020-01-01` to `2021-01-01` (12 monthly submission windows).
 
 ### 4.4 Split Strategy
 - Split at day level, not tile level.
@@ -235,6 +267,12 @@ Label binarization (`_to_binary_fire_mask`):
 - If values in `[-1,1]`: `>0` => fire
 - Else categorical mask: `>=7` => fire
 
+Fire-level handling note (discussed and implemented):
+- MODIS categorical `FireMask` can contain non-binary class codes (for example values such as `3`, `5`, `7`, `8`, `9`).
+- Final preprocessing rule is explicit and fixed:
+  - `FireMask >= 7` -> fire (`1`)
+  - `FireMask < 7` -> non-fire (`0`)
+
 Location/time meta channels:
 - `meta_lon_z`, `meta_lat_z`, `meta_day_of_year_z`
 - z-normalized using train-split mean/std only
@@ -243,6 +281,24 @@ Train normalization constants (from metadata):
 - `meta_lon_z`: mean `-119.7486`, std `2.4645`
 - `meta_lat_z`: mean `37.3110`, std `2.5713`
 - `meta_day_of_year_z`: mean `183.5329`, std `107.8623`
+
+### 5.3 Additional Preprocessing Rules and Similar Decisions
+- Required metadata enforcement:
+  - Records missing `sample_date`, `sample_lon`, or `sample_lat` are excluded during manifest build.
+- Deterministic identity:
+  - `sample_id` is deterministic and used as the stable join key across manifest, canonical dataset, HEV table, hazard inference, and risk outputs.
+- Split conversion:
+  - Raw split names (`train`, `eval`, `test`) are mapped to canonical model splits (`train`, `validation`, `test`).
+- Storage dtypes:
+  - Features stored as `float16`; labels stored as `uint8` (volume/runtime tradeoff).
+- Meta-channel scaling:
+  - `meta_lon_z`, `meta_lat_z`, `meta_day_of_year_z` are normalized using train-only statistics, then broadcast into constant 64x64 channels per sample tile.
+- Raw band scaling policy:
+  - NDWS physical bands are used in their exported numeric scale (no additional global min-max normalization in `build_hazard_pickles.py`).
+  - The only explicit thresholding/conversion is fire-mask binarization.
+- Classification thresholds:
+  - In training/evaluation metrics, logits are binarized at `0` (equivalent to probability threshold `0.5`).
+  - In hazard inference export, probability threshold is `0.5` (`--threshold 0.5`) for predicted-fire pixel metrics.
 
 ---
 
